@@ -1,0 +1,62 @@
+{
+  "cache-logic-smoke-test.js": {
+    "destination": "tests/cache-logic-smoke-test.js",
+    "log": "rollout-2026-09-05T12-39-02-01a07012-bb48-7db1-b0f2-58d8d28d1e4e_01a07013-d3d8-7662-8901-928525e5ef9f.jsonl",
+    "time": "2026-09-05T05:57:29.283Z",
+    "sha256": "080e283aecb090b55187d2fb6f7cc1b1621411b5307cfa0cd3038c9f653531ef"
+  },
+  "engine/crash-baseline.cjs": {
+    "destination": "tests/crash-baseline.cjs",
+    "log": "rollout-2026-09-05T12-39-02-01a07012-bb48-7db1-b0f2-58d8d28d1e4e_01a07013-d3d8-7662-8901-928525e5ef9f.jsonl",
+    "time": "2026-09-05T05:56:53.654Z",
+    "sha256": "1626df389500fa7194d40ea89cd5f2ee18638a69a1bb66b4ad643ca5edab77b3"
+  },
+  "engine/crash-regression.cjs": {
+    "destination": "tests/crash-regression.cjs",
+    "log": "rollout-2026-09-05T12-39-02-01a07012-bb48-7db1-b0f2-58d8d28d1e4e_01a07013-d3d8-7662-8901-928525e5ef9f.jsonl",
+    "time": "2026-09-05T05:56:53.654Z",
+    "sha256": "8dd0e4b605ae72e0798063b6443ca2fae883ede467bf3f64ea187fdccc350d21"
+  },
+  "engine/wasm-crash-test.html": {
+    "destination": "tests/browser/wasm-crash-test.html",
+    "log": "rollout-2026-09-05T12-39-02-01a07012-bb48-7db1-b0f2-58d8d28d1e4e_01a07013-d3d8-7662-8901-928525e5ef9f.jsonl",
+    "time": "2026-09-05T05:51:58.230Z",
+    "sha256": "426e82ae9acdbbb636de017e3a996e082fa19f4e27feca19b279b4910c64e6b0"
+  },
+  "engine/serve-crash-test.cjs": {
+    "destination": "tests/serve-crash-test.cjs",
+    "log": "rollout-2026-09-05T12-39-02-01a07012-bb48-7db1-b0f2-58d8d28d1e4e_01a07013-d3d8-7662-8901-928525e5ef9f.jsonl",
+    "time": "2026-09-05T05:51:58.230Z",
+    "sha256": "ed02c268b4bc8f66806ca4b0224a2bba6ceb7ff2943f9c4a618295791142d756"
+  },
+  "CRASH-AUDIT-2026-09-05.md": {
+    "destination": "tests/reports/CRASH-AUDIT-2026-09-05.md",
+    "log": "rollout-2026-09-05T12-39-02-01a07012-bb48-7db1-b0f2-58d8d28d1e4e_01a07013-d3d8-7662-8901-928525e5ef9f.jsonl",
+    "time": "2026-09-05T06:01:00.184Z",
+    "sha256": "3a74d0922d1661608812a52218dd163b9d039ae2b706a63140fa2d4fa4d5e482"
+  },
+  "engine/composite-regression.cjs": {
+    "destination": "tests/composite-regression.cjs",
+    "log": "rollout-2026-09-05T12-39-02-01a07012-bb48-7db1-b0f2-58d8d28d1e4e_01a07013-d3d8-7662-8901-928525e5ef9f.jsonl",
+    "time": "2026-09-05T06:14:38.973Z",
+    "sha256": "a0ec6f27e7ff987dd401221bacf5237cf18e970e381121d9e511042464a549b4"
+  },
+  "engine/serve-composite-test.cjs": {
+    "destination": "tests/serve-composite-test.cjs",
+    "log": "rollout-2026-09-05T12-39-02-01a07012-bb48-7db1-b0f2-58d8d28d1e4e_01a07013-d3d8-7662-8901-928525e5ef9f.jsonl",
+    "time": "2026-09-05T06:15:57.772Z",
+    "sha256": "6ad06d4900367d4aa3ae96b021aa6da7d2d5b59ff8b79b50086e611c924fb1a5"
+  },
+  "engine/composite-browser-test.js": {
+    "destination": "tests/browser/composite-browser-test.js",
+    "log": "rollout-2026-09-05T12-39-02-01a07012-bb48-7db1-b0f2-58d8d28d1e4e_01a07013-d3d8-7662-8901-928525e5ef9f.jsonl",
+    "time": "2026-09-05T06:15:57.772Z",
+    "sha256": "28b4d070a561e079c38db59e8d2b6a7776d312f4748c9f955a7d833dc82aeefe"
+  },
+  "COMPOSITE-FIX-2026-09-05.md": {
+    "destination": "tests/reports/COMPOSITE-FIX-2026-09-05.md",
+    "log": "rollout-2026-09-05T12-39-02-01a07012-bb48-7db1-b0f2-58d8d28d1e4e_01a07013-d3d8-7662-8901-928525e5ef9f.jsonl",
+    "time": "2026-09-05T11:11:46.402Z",
+    "sha256": "84df2694d1bb4ee6147b57427279e9869ae48ca1e8593df99e597e89b6b9d1b1"
+  }
+}

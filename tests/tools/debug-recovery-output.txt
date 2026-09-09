@@ -1,0 +1,564 @@
+Script completed
+Wall time 1.7 seconds
+Output:
+
+Warning: truncated output (original token count: 10044)
+Total output lines: 558
+
+// Äá»‘i chiáº¿u luáº­t chuá»—i chiáº¿u cá»§a Brute-force vá»›i Engine Web: CÃ™NG tÃ¡m tháº¿ cá», cÃ¹ng thá»© tá»±, in ra
+// cÃ¹ng má»™t Ä‘á»‹nh dáº¡ng Ä‘á»ƒ so tá»«ng dÃ²ng vá»›i báº£n cháº¡y trÃªn trÃ¬nh duyá»‡t (.cs-probe.js cá»§a app).
+// Trá»ng tÃ¢m: quÃ¢n giá»¯ chuá»—i lÃ  quÃ¢n ÄANG THáº¬T Sá»° chiáº¿u, nÃªn chiáº¿u má»Ÿ/chiáº¿u Ä‘Ã´i pháº£i tÃ­nh cho Xe,
+// khÃ´ng pháº£i cho quÃ¢n vá»«a Ä‘i.
+//
+// Dá»±ng riÃªng, KHÃ”NG náº±m trong danh sÃ¡ch nguá»“n cá»§a build-xiangqi.bat (file nÃ y cÃ³ main() riÃªng):
+//   g++ -std=c++17 -O1 -static -o cs_test.exe debug_root_streak.cpp movegen.cpp rules.cpp hash.cpp fen.cpp
+#include "fen.h"
+#include "rules.h"
+#include "movegen.h"
+
+#include <algorithm>
+#include <cstdio>
+#include <string>
+#include <vector>
+
+using namespace BruteForce;
+
+namespace {
+
+constexpr CsSide RESTRICTED = CsSide::Red;
+constexpr int LIMIT = 2;
+
+Board emptyBoard() { return Board{}; }
+
+void put(Board& b, int r, int c, PieceType type, Color color) { b[r][c] = Piece{type, color}; }
+
+Move mv(int fr, int fc, int tr, int tc) { return Move{{fr, fc}, {tr, tc}}; }
+
+// GÃ³i tay má»™t táº­p (Ã´, sá»‘ láº§n) â€” dÃ¹ng Ä‘á»ƒ dá»±ng tráº¡ng thÃ¡i "Ä‘Ã£ cÃ³ sáºµn" cho tá»«ng phÃ©p thá»­.
+CsCode pack(std::vector<std::pair<int, int>> items) {
+    std::sort(items.begin(), items.end());
+    CsCode code = 0, mult = 1;
+    for (auto& it : items) {
+        code += CsCode(it.first * CS_COUNT_BASE + it.second) * mult;
+        mult *= CS_DIGIT_BASE;
+    }
+    return code;
+}
+
+std::string show(CsCode code) {
+    if (code < 0) return "PHAM LUAT (-1)";
+    if (code == 0) return "khong co chuoi (0)";
+    std::string out;
+    CsCode rest = code;
+    while (rest > 0) {
+        int digit = int(rest % CS_DIGIT_BASE);
+        rest /= CS_DIGIT_BASE;
+        if (digit == 0) continue;
+        int sq = digit / CS_COUNT_BASE, n = digit % CS_COUNT_BASE;
+        char buf[64];
+        snprintf(buf, sizeof(buf), "sq%d(r%dc%d)=%d", sq, sq / BOARD_WIDTH, sq % BOARD_WIDTH, n);
+        if (!out.empty()) out += " + ";
+        out += buf;
+    }
+    return out;
+}
+
+int g_fails = 0;
+
+void run(const char* name, Board b, Move move, CsCode prior, const char* expect) {
+    makeMoveInPlace(b, move);
+    Square oppKing;
+    findKing(b, Color::Black, oppKing);
+    CsCode got = csAdvanceAfterMove(b, prior, move, Color::Red, oppKing, RESTRICTED, LIMIT);
+    bool ok = show(got) == expect;
+    if (!ok) ++g_fails;
+    printf("%s%s\n      duoc : %s\n      mong : %s\n", ok ? "OK  " : "SAI ", name, show(got).c_str(), expect);
+}
+
+// Xe Äá» (9,4) bá»‹ chÃ­nh MÃ£ Äá» cháº¯n trÃªn cá»™t 4; TÆ°á»›ng Äen (0,4).
+Board boardHorseBlocks(int horseRow) {
+    Board b = emptyBoard();
+    put(b, 0, 4, PieceType::King, Color::Black);
+    put(b, 9, 3, PieceType::King, Color::Red);
+    put(b, 9, 4, PieceType::Chariot, Color::Red);
+    put(b, horseRow, 4, PieceType::Horse, Color::Red);
+    return b;
+}
+
+Board boardRookRow() {
+    Board b = emptyBoard();
+    put(b, 0, 4, PieceType::King, Color::Black);
+    put(b, 9, 3, PieceType::King, Color::Red);
+    put(b, 0, 0, PieceType::Chariot, Color::Red);
+    return b;
+}
+
+}  // namespace
+
+int main() {
+    printf("PROBE-BEGIN\n");
+
+    run("T1 chieu doi (Ma + Xe mo hinh)", boardHorseBlocks(2), mv(2, 4, 1, 2), 0,
+        "sq11(r1c2)=1 + sq85(r9c4)=1");
+
+    run("T2 chieu mo thuan (chi Xe chieu)", boardHorseBlocks(2), mv(2, 4, 4, 5), 0,
+        "sq85(r9c4)=1");
+
+    run("T3 Xe tiep tuc chuoi qua quan khac", boardHorseBlocks(3), mv(3, 4, 5, 5), pack({{85, 1}}),
+        "sq85(r9c4)=2");
+
+    run("T4 Xe chieu luot thu 3 -> pham luat", boardHorseBlocks(3), mv(3, 4, 5, 5), pack({{85, 2}}),
+        "PHAM LUAT (-1)");
+
+    run("T5 chinh Xe di tiep", boardRookRow(), mv(0, 0, 0, 1), pack({{0, 1}}),
+        "sq1(r0c1)=2");
+
+    Board rookAndHorse = boardRookRow();
+    put(rookAndHorse, 2, 4, PieceType::Horse, Color::Red);
+    run("T6 Ma vao chieu, Xe san dang chieu", rookAndHorse, mv(2, 4, 1, 2), pack({{0, 1}}),
+        "sq0(r0c0)=2 + sq11(r1c2)=1");
+
+    run("T7 nuoc khong chieu -> dut chuoi", boardHorseBlocks(2), mv(9, 3, 8, 3), pack({{85, 1}}),
+        "khong co chuoi (0)");
+
+    // Chiáº¿u Ä‘Ã´i mÃ  Má»˜T trong hai quÃ¢n Ä‘Ã£ dÃ¹ng háº¿t lÆ°á»£t thÃ¬ váº«n pháº¡m luáº­t â€” khÃ´ng Ä‘Æ°á»£c vÃ¬ quÃ¢n kia
+    // má»›i chiáº¿u láº§n Ä‘áº§u mÃ  tha. T10 quÃ¢n háº¿t lÆ°á»£t lÃ  Xe (Ä‘á»©ng yÃªn, sáºµn Ä‘ang chiáº¿u), T11 lÃ  MÃ£ (vá»«a
+    // Ä‘i, nÃªn bá»™ Ä‘áº¿m cÅ© cá»§a nÃ³ náº±m á»Ÿ Ã´ XUáº¤T PHÃT 22 = r2c4).
+    Board rookAtLimit = boardRookRow();
+    put(rookAtLimit, 2, 4, PieceType::Horse, Color::Red);
+    run("T10 chieu doi, Xe da du 2 luot -> pham luat", rookAtLimit, mv(2, 4, 1, 2), pack({{0, 2}}),
+        "PHAM LUAT (-1)");
+
+    Board horseAtLimit = boardRookRow();
+    put(horseAtLimit, 2, 4, PieceType::Horse, Color::Red);
+    run("T11 chieu doi, Ma vua di da du 2 luot -> pham luat", horseAtLimit, mv(2, 4, 1, 2),
+        pack({{22, 2}}), "PHAM LUAT (-1)");
+
+    CsCode packed = pack({{85, 2}, {11, 1}});
+    printf("T8 goi/mo goi: %lld -> %s | csCountAt(85)=%d csCountAt(11)=%d csMaxCount=%d\n",
+           (long long) packed, show(packed).c_str(), csCountAt(packed, 85), csCountAt(packed, 11), csMaxCount(packed));
+
+    // T9: Ä‘á»c option gá»‘c pháº£i ra ÄÃšNG sá»‘ mÃ  app gÃ³i (chuá»—i "c8:1,e0:2" lÃ  báº£n app in ra cho táº­p nÃ y).
+    CsCode fromOption = parseCheckStreakRootOption("c8:1,e0:2");
+    bool okOption = fromOption == packed;
+    if (!okOption) ++g_fails;
+    printf("%sT9 doc option \"c8:1,e0:2\"\n      duoc : %lld (%s)\n      mong : %lld\n",
+           okOption ? "OK  " : "SAI ", (long long) fromOption, show(fromOption).c_str(), (long long) packed);
+
+    bool okNone = parseCheckStreakRootOption("none") == 0;
+    if (!okNone) ++g_fails;
+    printf("%sT9b doc option \"none\" -> 0\n", okNone ? "OK  " : "SAI ");
+
+    printf("PROBE-END\n");
+    printf(g_fails == 0 ? "TAT CA KHOP\n" : "CO %d PHEP THU SAI\n", g_fails);
+    return g_fails == 0 ? 0 : 1;
+}
+
+engine\bruteforce-src\src\search.cpp-123-        ++legalCount;
+engine\bruteforce-src\src\search.cpp-124-
+engine\bruteforce-src\src\search.cpp-125-        i32 score;
+engine\bruteforce-src\src\search.cpp-126-        bool haveRes = false;
+engine\bruteforce-src\src\search.cpp-127-        SearchResult res;
+engine\bruteforce-src\src\search.cpp-128-        CsCode nextCsR = csRed, nextCsB = csBlack;
+engine\bruteforce-src\src\search.cpp-129-        bool brokeRule = false;
+engine\bruteforce-src\src\search.cpp-130-
+engine\bruteforce-src\src\search.cpp-131-        if (haveOppKing) {
+engine\bruteforce-src\src\search.cpp-132-            CsCode ncs = csAdvanceAfterMove(b, myStreak, move, color, oppKing,
+engine\bruteforce-src\src\search.cpp:133:                                            st.restrictedSide, st.checkStreakLimit);
+engine\bruteforce-src\src\search.cpp-134-            if (ncs < 0) {
+engine\bruteforce-src\src\search.cpp-135-                brokeRule = true;
+engine\bruteforce-src\src\search.cpp-136-                score = -(MATE_SCORE - (pliesFromRoot + 1));
+engine\bruteforce-src\src\search.cpp-137-            } else if (isRed) nextCsR = ncs; else nextCsB = ncs;
+engine\bruteforce-src\src\search.cpp-138-        }
+engine\bruteforce-src\src\search.cpp-139-
+engine\bruteforce-src\src\search.cpp-140-        if (!brokeRule) {
+engine\bruteforce-src\src\search.cpp-141-            int consume = ktcSkip ? 0 : 1;
+engine\bruteforce-src\src\search.cpp-142-            int nextRed = isRed ? redBudget - consume : redBudget;
+engine\bruteforce-src\src\search.cpp-143-            int nextBlack = isRed ? blackBudget : blackBudget - consume;
+--
+engine\bruteforce-src\src\search.cpp-221-        ++st.nodeCounter;
+engine\bruteforce-src\src\search.cpp-222-
+engine\bruteforce-src\src\search.cpp-223-        i32 score;
+engine\bruteforce-src\src\search.cpp-224-        bool haveRes = false;
+engine\bruteforce-src\src\search.cpp-225-        SearchResult res;
+engine\bruteforce-src\src\search.cpp-226-        CsCode nextCsR = csRed, nextCsB = csBlack;
+engine\bruteforce-src\src\search.cpp-227-        bool brokeRule = false;
+engine\bruteforce-src\src\search.cpp-228-
+engine\bruteforce-src\src\search.cpp-229-        if (haveOppKing) {
+engine\bruteforce-src\src\search.cpp-230-            CsCode ncs = csAdvanceAfterMove(b, myStreak, move, color, oppKing,
+engine\bruteforce-src\src\search.cpp:231:                                            st.restrictedSide, st.checkStreakLimit);
+engine\bruteforce-src\src\search.cpp-232-            if (ncs < 0) {
+engine\bruteforce-src\src\search.cpp-233-                brokeRule = true;
+engine\bruteforce-src\src\search.cpp-234-                score = -(MATE_SCORE - 1);
+engine\bruteforce-src\src\search.cpp-235-            } else if (isRed) nextCsR = ncs; else nextCsB = ncs;
+engine\bruteforce-src\src\search.cpp-236-        }
+engine\bruteforce-src\src\search.cpp-237-
+engine\bruteforce-src\src\search.cpp-238-        if (!brokeRule) {
+engine\bruteforce-src\src\search.cpp-239-            int consume = ktcSkip ? 0 : 1;
+engine\bruteforce-src\src\search.cpp-240-            int nextRed = isRed ? redBudget - consume : redBudget;
+engine\bruteforce-src\src\search.cpp-241-            int nextBlack = isRed ? blackBudget : blackBudget - consume;
+--
+engine\pikafish-src\src\search.cpp-714-        main_manager()->check_time(*this);
+engine\pikafish-src\src\search.cpp-715-
+engine\pikafish-src\src\search.cpp-716-    // Used to send selDepth info to GUI (selDepth counts from 1, ply from 0)
+engine\pikafish-src\src\search.cpp-717-    if (PvNode && selDepth < ss->ply + 1)
+engine\pikafish-src\src\search.cpp-718-        selDepth = ss->ply + 1;
+engine\pikafish-src\src\search.cpp-719-
+engine\pikafish-src\src\search.cpp-720-    if (!rootNode)
+engine\pikafish-src\src\search.cpp-721-    {
+engine\pikafish-src\src\search.cpp-722-        // Step 2. Check for aborted search and repetition
+engine\pikafish-src\src\search.cpp-723-        Value result = VALUE_NONE;
+engine\pikafish-src\src\search.cpp:724:        if (pos.rule_judge(result, ss->ply))
+engine\pikafish-src\src\search.cpp-725-            return result == VALUE_DRAW ? value_draw(nodes) : result;
+engine\pikafish-src\src\search.cpp-726-        if (result != VALUE_NONE)
+engine\pikafish-src\src\search.cpp-727-        {
+engine\pikafish-src\src\search.cpp-728-            assert(result != VALUE_DRAW);
+engine\pikafish-src\src\search.cpp-729-
+engine\pikafish-src\src\search.cpp-730-            // 2 fold result is mate for us, the only chance for the opponent is to get a draw
+engine\pikafish-src\src\search.cpp-731-            // We can guarantee to get at least a draw score during searching for that line
+engine\pikafish-src\src\search.cpp-732-            if (result > VALUE_DRAW)
+engine\pikafish-src\src\search.cpp-733-                alpha = std::max(alpha, VALUE_DRAW - 1);
+engine\pikafish-src\src\search.cpp-734-            // 2 fold result is mated for us, the only chance for us is to get a draw
+--
+engine\pikafish-src\src\search.cpp-835-                update_quiet_histories(pos, ss, *this, ttData.move, std::min(108 * depth, 1773));
+engine\pikafish-src\src\search.cpp-836-
+engine\pikafish-src\src\search.cpp-837-            // Extra penalty for early quiet moves of the previous ply
+engine\pikafish-src\src\search.cpp-838-            if (prevSq != SQ_NONE && (ss - 1)->moveCount < 3 && !priorCapture)
+engine\pikafish-src\src\search.cpp-839-                update_continuation_histories(ss - 1, pos.piece_on(prevSq), prevSq, -2218);
+engine\pikafish-src\src\search.cpp-840-        }
+engine\pikafish-src\src\search.cpp-841-
+engine\pikafish-src\src\search.cpp-842-        // Partial workaround for the graph history interaction problem
+engine\pikafish-src\src\search.cpp-843-        // For high rule60 counts don't produce transposition table cutoffs.
+engine\pikafish-src\src\search.cpp-844-        // Also skip when a check-streak house rule is active for the mover (see
+engine\pikafish-src\src\search.cpp:845:        // Position::check_streak_active): that counter isn't in the Zobrist key either, so a
+engine\pikafish-src\src\search.cpp-846-        // cached score here could belong to a different streak count reached via another
+engine\pikafish-src\src\search.cpp-847-        // move order.
+engine\pikafish-src\src\search.cpp:848:        if (pos.rule60_count() < 116 && !pos.check_streak_active())
+engine\pikafish-src\src\search.cpp-849-        {
+engine\pikafish-src\src\search.cpp-850-            if (depth >= 7 && ttData.move && pos.pseudo_legal(ttData.move) && pos.legal(ttData.move)
+engine\pikafish-src\src\search.cpp-851-                && !is_decisive(ttData.value))
+engine\pikafish-src\src\search.cpp-852-            {
+engine\pikafish-src\src\search.cpp-853-                pos.do_move(ttData.move, st);
+engine\pikafish-src\src\search.cpp-854-                Key nextPosKey                             = pos.key();
+engine\pikafish-src\src\search.cpp-855-                auto [ttHitNext, ttDataNext, ttWriterNext] = tt.probe(nextPosKey);
+engine\pikafish-src\src\search.cpp-856-                pos.undo_move(ttData.move);
+engine\pikafish-src\src\search.cpp-857-
+engine\pikafish-src\src\search.cpp-858-                // Check that the ttValue after the tt move would also trigger a cutoff
+--
+engine\pikafish-src\src\search.cpp-1563-    bestMove    = Move::none();
+engine\pikafish-src\src\search.cpp-1564-    ss->inCheck = bool(pos.checkers());
+engine\pikafish-src\src\search.cpp-1565-    moveCount   = 0;
+engine\pikafish-src\src\search.cpp-1566-
+engine\pikafish-src\src\search.cpp-1567-    // Used to send selDepth info to GUI (selDepth counts from 1, ply from 0)
+engine\pikafish-src\src\search.cpp-1568-    if (PvNode && selDepth < ss->ply + 1)
+engine\pikafish-src\src\search.cpp-1569-        selDepth = ss->ply + 1;
+engine\pikafish-src\src\search.cpp-1570-
+engine\pikafish-src\src\search.cpp-1571-    // Step 2. Check for repetition or maximum ply reached
+engine\pikafish-src\src\search.cpp-1572-    Value result = VALUE_NONE;
+engine\pikafish-src\src\search.cpp:1573:    if (pos.rule_judge(result, ss->ply))
+engine\pikafish-src\src\search.cpp-1574-        return result;
+engine\pikafish-src\src\search.cpp-1575-    if (result != VALUE_NONE)
+engine\pikafish-src\src\search.cpp-1576-    {
+engine\pikafish-src\src\search.cpp-1577-        assert(result != VALUE_DRAW);
+engine\pikafish-src\src\search.cpp-1578-
+engine\pikafish-src\src\search.cpp-1579-        // 2 fold result is mate for us, the only chance for the opponent is to get a draw
+engine\pikafish-src\src\search.cpp-1580-        // We can guarantee to get at least a draw score during searching for that line
+engine\pikafish-src\src\search.cpp-1581-        if (result > VALUE_DRAW)
+engine\pikafish-src\src\search.cpp-1582-            alpha = std::max(alpha, VALUE_DRAW);
+engine\pikafish-src\src\search.cpp-1583-        // 2 fold result is mated for us, the only chance for us is to get a draw
+--
+engine\pikafish-src\src\search.cpp-2024-// We try hard to have a ponder move to return to the GUI,
+engine\pikafish-src\src\search.cpp-2025-// otherwise in case of 'ponder on' we have nothing to think about.
+engine\pikafish-src\src\search.cpp-2026-bool RootMove::extract_ponder_from_tt(const TranspositionTable& tt, Position& pos) {
+engine\pikafish-src\src\search.cpp-2027-
+engine\pikafish-src\src\search.cpp-2028-    assert(pv.size() == 1 && pv[0] != Move::none());
+engine\pikafish-src\src\search.cpp-2029-
+engine\pikafish-src\src\search.cpp-2030-    StateInfo st;
+engine\pikafish-src\src\search.cpp-2031-    pos.do_move(pv[0], st, &tt);
+engine\pikafish-src\src\search.cpp-2032-
+engine\pikafish-src\src\search.cpp-2033-    Value _;
+engine\pikafish-src\src\search.cpp:2034:    if (!pos.rule_judge(_, 1))
+engine\pikafish-src\src\search.cpp-2035-    {
+engine\pikafish-src\src\search.cpp-2036-        auto [ttHit, ttData, ttWriter] = tt.probe(pos.key());
+engine\pikafish-src\src\search.cpp-2037-        if (ttHit && MoveList<LEGAL>(pos).contains(ttData.move))
+engine\pikafish-src\src\search.cpp-2038-            pv.push_back(ttData.move);
+engine\pikafish-src\src\search.cpp-2039-    }
+engine\pikafish-src\src\search.cpp-2040-
+engine\pikafish-src\src\search.cpp-2041-    pos.undo_move(pv[0]);
+engine\pikafish-src\src\search.cpp-2042-    return pv.size() > 1;
+engine\pikafish-src\src\search.cpp-2043-}
+engine\pikafish-src\src\search.cpp-2044-
+--
+engine\pikafish-src\src\position.cpp-50-namespace Zobrist {
+engine\pikafish-src\src\position.cpp-51-
+engine\pikafish-src\src\position.cpp-52-Key psq[PIECE_NB][SQUARE_NB];
+engine\pikafish-src\src\position.cpp-53-Key side, noPawns;
+engine\pikafish-src\src\position.cpp-54-}
+engine\pikafish-src\src\position.cpp-55-
+engine\pikafish-src\src\position.cpp-56-namespace CheckStreak {
+engine\pikafish-src\src\position.cpp-57-
+engine\pikafish-src\src\position.cpp-58-// All false = rule off (default). Set through UCI options "CheckStreak_RestrictedColor"
+engine\pikafish-src\src\position.cpp-59-// ("white" / "black" / "both" / "none") and "CheckStreak_Limit" — see engine.cpp — before "go",
+engine\pikafish-src\src\position.cpp:60:// exactly like the app sets checkStreakRestrictedColor/checkStreakLimit before each analysis/game.
+engine\pikafish-src\src\position.cpp-61-bool restricted[COLOR_NB] = {false, false};
+engine\pikafish-src\src\position.cpp-62-int  limit                = 2;
+engine\pikafish-src\src\position.cpp-63-// 0 = no streak in progress at the root (fresh position). Set through the "CheckStreak_RootRed" /
+engine\pikafish-src\src\position.cpp-64-// "CheckStreak_RootBlack" options, which carry a list of "square:count" pairs.
+engine\pikafish-src\src\position.cpp-65-u64 root[COLOR_NB] = {0, 0};
+engine\pikafish-src\src\position.cpp-66-}
+engine\pikafish-src\src\position.cpp-67-
+engine\pikafish-src\src\position.cpp-68-namespace {
+engine\pikafish-src\src\position.cpp-69-
+engine\pikafish-src\src\position.cpp-70-constexpr std::string_view PieceToChar(" RACPNBK racpnbk");
+--
+engine\pikafish-src\src\position.cpp-262-        return PositionSetError("Unsupported position. Game ply out of range.");
+engine\pikafish-src\src\position.cpp-263-
+engine\pikafish-src\src\position.cpp-264-    // Convert from fullmove starting from 1 to gamePly starting from 0,
+engine\pikafish-src\src\position.cpp-265-    // handle also common incorrect FEN with fullmove = 0.
+engine\pikafish-src\src\position.cpp-266-    gamePly = std::max(2 * (gamePly - 1), 0) + (sideToMove == BLACK);
+engine\pikafish-src\src\position.cpp-267-
+engine\pikafish-src\src\position.cpp-268-    set_state();
+engine\pikafish-src\src\position.cpp-269-
+engine\pikafish-src\src\position.cpp-270-    // A freshly-set position (new "position fen ..." from the GUI) never carries an in-progress
+engine\pikafish-src\src\position.cpp-271-    // check streak. Engine::set_position stamps the app's real state right after this call.
+engine\pikafish-src\src\position.cpp:272:    st->checkStreak[WHITE] = st->checkStreak[BLACK] = 0;
+engine\pikafish-src\src\position.cpp-273-
+engine\pikafish-src\src\position.cpp-274-    if (checkers_to(sideToMove, king_square(~sideToMove)))
+engine\pikafish-src\src\position.cpp-275-        return PositionSetError("Unsupported position. King can be captured.");
+engine\pikafish-src\src\position.cpp-276-
+engine\pikafish-src\src\position.cpp-277-    assert(pos_is_ok());
+engine\pikafish-src\src\position.cpp-278-
+engine\pikafish-src\src\position.cpp-279-    return std::nullopt;
+engine\pikafish-src\src\position.cpp-280-}
+engine\pikafish-src\src\position.cpp-281-
+engine\pikafish-src\src\position.cpp-282-
+--
+engin…44 tokens truncated…esCheck == bool(checkers_to(us, king_square(them))));
+engine\pikafish-src\src\position.cpp-712-
+engine\pikafish-src\src\position.cpp-713-    // House rule: one and the same piece checking CheckStreak::limit+1 times in a row (for a
+engine\pikafish-src\src\position.cpp-714-    // restricted side only) loses — see csAdvanceAfterMove() in the app's own engine, which this
+engine\pikafish-src\src\position.cpp-715-    // mirrors step for step. Every piece that genuinely checks gets its own counter, so a double
+engine\pikafish-src\src\position.cpp-716-    // check credits both pieces and a discovered check credits the uncovered piece, not the mover.
+engine\pikafish-src\src\position.cpp-717-    // Must run after st->checkersBB above: that bitboard IS the set of pieces to credit.
+engine\pikafish-src\src\position.cpp-718-    // "Still the same piece" is recognised by the square it stood on BEFORE this move: `from` for
+engine\pikafish-src\src\position.cpp-719-    // the piece that just moved, its own square for every other checker (only one own piece can
+engine\pikafish-src\src\position.cpp:720:    // have moved since this side's previous move). The verdict itself is left to rule_judge().
+engine\pikafish-src\src\position.cpp-721-    if (!CheckStreak::restricted[us] || !givesCheck)
+engine\pikafish-src\src\position.cpp:722:        st->checkStreak[us] = 0;
+engine\pikafish-src\src\position.cpp-723-    else
+engine\pikafish-src\src\position.cpp-724-    {
+engine\pikafish-src\src\position.cpp:725:        u64      prev = st->checkStreak[us];
+engine\pikafish-src\src\position.cpp-726-        u64      next = 0, mult = 1;
+engine\pikafish-src\src\position.cpp-727-        int      slot = 0;
+engine\pikafish-src\src\position.cpp-728-        Bitboard checkers = st->checkersBB;
+engine\pikafish-src\src\position.cpp-729-        while (checkers)
+engine\pikafish-src\src\position.cpp-730-        {
+engine\pikafish-src\src\position.cpp-731-            Square s = pop_lsb(checkers);
+engine\pikafish-src\src\position.cpp-732-            int    n = CheckStreak::count_at(prev, s == to ? from : s) + 1;
+engine\pikafish-src\src\position.cpp-733-            // A count only ever has to survive up to limit + 1 (rule_judge ends the game at that
+engine\pikafish-src\src\position.cpp-734-            // point), so this clamp is unreachable with the limits the app uses; it is here so an
+engine\pikafish-src\src\position.cpp-735-            // absurd CheckStreak_Limit can never corrupt the packing.
+engine\pikafish-src\src\position.cpp-736-            if (n > CheckStreak::COUNT_BASE - 1)
+engine\pikafish-src\src\position.cpp-737-                n = CheckStreak::COUNT_BASE - 1;
+engine\pikafish-src\src\position.cpp-738-            if (slot >= CheckStreak::SLOTS)
+engine\pikafish-src\src\position.cpp-739-                break;
+engine\pikafish-src\src\position.cpp-740-            next += u64(int(s) * CheckStreak::COUNT_BASE + n) * mult;
+engine\pikafish-src\src\position.cpp-741-            mult *= CheckStreak::DIGIT_BASE;
+engine\pikafish-src\src\position.cpp-742-            ++slot;
+engine\pikafish-src\src\position.cpp-743-        }
+engine\pikafish-src\src\position.cpp:744:        st->checkStreak[us] = next;
+engine\pikafish-src\src\position.cpp-745-    }
+engine\pikafish-src\src\position.cpp-746-
+engine\pikafish-src\src\position.cpp-747-    sideToMove = ~sideToMove;
+engine\pikafish-src\src\position.cpp-748-
+engine\pikafish-src\src\position.cpp-749-    // Update king attacks used for fast check detection
+engine\pikafish-src\src\position.cpp-750-    set_check_info();
+engine\pikafish-src\src\position.cpp-751-
+engine\pikafish-src\src\position.cpp-752-    assert(pos_is_ok());
+engine\pikafish-src\src\position.cpp-753-
+engine\pikafish-src\src\position.cpp-754-    assert(dp.pc != NO_PIECE);
+--
+engine\pikafish-src\src\position.cpp-1315-        }
+engine\pikafish-src\src\position.cpp-1316-    }
+engine\pikafish-src\src\position.cpp-1317-
+engine\pikafish-src\src\position.cpp-1318-    return bool(chase[us]) ^ bool(chase[them]) ? chase[us] ? mated_in(ply) : mate_in(ply)
+engine\pikafish-src\src\position.cpp-1319-                                               : VALUE_DRAW;
+engine\pikafish-src\src\position.cpp-1320-}
+engine\pikafish-src\src\position.cpp-1321-
+engine\pikafish-src\src\position.cpp-1322-
+engine\pikafish-src\src\position.cpp-1323-// Tests whether the position may end the game by rule 60, insufficient material, draw repetition,
+engine\pikafish-src\src\position.cpp-1324-// perpetual check repetition or perpetual chase repetition that allows a player to claim a game result.
+engine\pikafish-src\src\position.cpp:1325:bool Position::rule_judge(Value& result, int ply) {
+engine\pikafish-src\src\position.cpp-1326-
+engine\pikafish-src\src\position.cpp-1327-    // House rule: one of the mover's (~sideToMove) pieces has now been checking one time too many
+engine\pikafish-src\src\position.cpp-1328-    // in a row. Skip entirely when the rule is off or the mover isn't a restricted side — this
+engine\pikafish-src\src\position.cpp-1329-    // keeps stock behaviour, and stock speed, whenever the app hasn't turned the rule on.
+engine\pikafish-src\src\position.cpp:1330:    // Overflow always loses, even if that same move is checkmate (mirrors checkStreakOverflowScore
+engine\pikafish-src\src\position.cpp-1331-    // in the app — the mate-exception used to let position 50 march a pawn-check 4 times).
+engine\pikafish-src\src\position.cpp-1332-    Color mover = ~sideToMove;
+engine\pikafish-src\src\position.cpp-1333-    if (CheckStreak::restricted[mover]
+engine\pikafish-src\src\position.cpp:1334:        && CheckStreak::max_count(st->checkStreak[mover]) > CheckStreak::limit)
+engine\pikafish-src\src\position.cpp-1335-    {
+engine\pikafish-src\src\position.cpp-1336-        result = mate_in(ply);  // good for sideToMove: the mover just lost by rule
+engine\pikafish-src\src\position.cpp-1337-        return true;
+engine\pikafish-src\src\position.cpp-1338-    }
+engine\pikafish-src\src\position.cpp-1339-
+engine\pikafish-src\src\position.cpp-1340-    // Restore rule 60 by adding back the checks
+engine\pikafish-src\src\position.cpp-1341-    int end = std::min(st->rule60 + std::max(0, st->check10[WHITE] - 10)
+engine\pikafish-src\src\position.cpp-1342-                         + std::max(0, st->check10[BLACK] - 10),
+engine\pikafish-src\src\position.cpp-1343-                       st->pliesFromNull);
+engine\pikafish-src\src\position.cpp-1344-
+--
+engine\bruteforce-src\src\main.cpp-50-}
+engine\bruteforce-src\src\main.cpp-51-
+engine\bruteforce-src\src\main.cpp-52-Board g_board{};
+engine\bruteforce-src\src\main.cpp-53-Color g_sideToMove = Color::Red;
+engine\bruteforce-src\src\main.cpp-54-// Lịch sử lặp thế của ván đang chơi, dựng lại từ chuỗi "moves" của lệnh "position" (app gửi thế cờ
+engine\bruteforce-src\src\main.cpp-55-// nền ngay sau lần ăn quân gần nhất rồi liệt kê các nước từ đó tới nay). Không có nó thì pha thế
+engine\bruteforce-src\src\main.cpp-56-// trận luôn ngỡ mọi thế cờ vừa xuất hiện lần đầu, nên không phạt được đường lặp/chiếu mãi và có thể
+engine\bruteforce-src\src\main.cpp-57-// chọn nước tự thua theo luật lặp thế.
+engine\bruteforce-src\src\main.cpp-58-PositionHistory g_history;
+engine\bruteforce-src\src\main.cpp-59-CsSide g_restrictedSide = CsSide::None;
+engine\bruteforce-src\src\main.cpp:60:int g_checkStreakLimit = CHECK_STREAK_DEFAULT;
+engine\bruteforce-src\src\main.cpp-61-int g_threads = 1;  // dùng ở giai đoạn đa luồng (chưa bật ở bản này) — giữ option để UI không lỗi
+engine\bruteforce-src\src\main.cpp-62-
+engine\bruteforce-src\src\main.cpp-63-// Chuỗi chiếu ĐÃ CÓ SẴN ở thế cờ gốc, mang theo từ ván đang chơi thật (app chỉ gửi board FEN hiện
+engine\bruteforce-src\src\main.cpp-64-// tại qua "position", không gửi lịch sử nước — không có 2 option này thì mọi lượt "go" đều ngỡ
+engine\bruteforce-src\src\main.cpp-65-// chuỗi chiếu vừa bắt đầu từ 0, có thể chọn nhầm một nước thật ra đã phạm luật giữa ván thật).
+engine\bruteforce-src\src\main.cpp-66-// 0 = chưa có quân nào giữ chuỗi.
+engine\bruteforce-src\src\main.cpp-67-CsCode g_csRootRed = 0, g_csRootBlack = 0;
+engine\bruteforce-src\src\main.cpp-68-bool g_ktcBudgetOn = false;
+engine\bruteforce-src\src\main.cpp-69-
+engine\bruteforce-src\src\main.cpp-70-// Một mốc lịch sử lặp thế — khớp repetitionEntry của app (:1890-1896): gaveCheck chỉ có nghĩa khi
+--
+engine\bruteforce-src\src\main.cpp-77-    return RepetitionEntry{hp.h1, hp.h2, sideToMove, mover, gaveCheck};
+engine\bruteforce-src\src\main.cpp-78-}
+engine\bruteforce-src\src\main.cpp-79-
+engine\bruteforce-src\src\main.cpp-80-std::atomic<bool> g_cancelled{false};
+engine\bruteforce-src\src\main.cpp-81-std::atomic<bool> g_searching{false};
+engine\bruteforce-src\src\main.cpp-82-std::thread g_searchThread;
+engine\bruteforce-src\src\main.cpp-83-
+engine\bruteforce-src\src\main.cpp-84-MateSearchState makeWorkerState(const MateSearchState& base) {
+engine\bruteforce-src\src\main.cpp-85-    MateSearchState worker;
+engine\bruteforce-src\src\main.cpp-86-    worker.restrictedSide = base.restrictedSide;
+engine\bruteforce-src\src\main.cpp:87:    worker.checkStreakLimit = base.checkStreakLimit;
+engine\bruteforce-src\src\main.cpp-88-    worker.ktcBudgetOn = base.ktcBudgetOn;
+engine\bruteforce-src\src\main.cpp-89-    worker.ktcExemptColor = base.ktcExemptColor;
+engine\bruteforce-src\src\main.cpp-90-    worker.cancelled = base.cancelled;
+engine\bruteforce-src\src\main.cpp-91-    worker.deadline = base.deadline;
+engine\bruteforce-src\src\main.cpp-92-    return worker;
+engine\bruteforce-src\src\main.cpp-93-}
+engine\bruteforce-src\src\main.cpp-94-
+engine\bruteforce-src\src\main.cpp-95-// Chỉ chia các nước GỐC: mọi nhánh con vẫn chạy alpha-beta y hệt bản một luồng. Vì mỗi worker
+engine\bruteforce-src\src\main.cpp-96-// sở hữu board, TT và heuristic riêng, không có khoá nào trong đường nóng và kết quả chiếu bí vẫn
+engine\bruteforce-src\src\main.cpp-97-// là kết quả quét cạn tuyệt đối. Giới hạn 4 để không nhân bảng băm 16 MB quá nhiều lần.
+--
+engine\bruteforce-src\src\main.cpp-168-                                                 hp.h1, hp.h2, csRed, csBlack, st, threads);
+engine\bruteforce-src\src\main.cpp-169-    st.ktcExemptColor = savedExempt;
+engine\bruteforce-src\src\main.cpp-170-    if (loss.score < -MATE_THRESHOLD) return {true, loss.score, loss.line};
+engine\bruteforce-src\src\main.cpp-171-    return {false, 0, {}};
+engine\bruteforce-src\src\main.cpp-172-}
+engine\bruteforce-src\src\main.cpp-173-
+engine\bruteforce-src\src\main.cpp-174-PositionalSearchState makePositionalWorkerState(const PositionalSearchState& base) {
+engine\bruteforce-src\src\main.cpp-175-    PositionalSearchState worker;
+engine\bruteforce-src\src\main.cpp-176-    worker.historyScores = base.historyScores;
+engine\bruteforce-src\src\main.cpp-177-    worker.restrictedSide = base.restrictedSide;
+engine\bruteforce-src\src\main.cpp:178:    worker.checkStreakLimit = base.checkStreakLimit;
+engine\bruteforce-src\src\main.cpp-179-    worker.history = base.history;
+engine\bruteforce-src\src\main.cpp-180-    worker.cancelled = base.cancelled;
+engine\bruteforce-src\src\main.cpp-181-    worker.deadline = base.deadline;
+engine\bruteforce-src\src\main.cpp-182-    return worker;
+engine\bruteforce-src\src\main.cpp-183-}
+engine\bruteforce-src\src\main.cpp-184-
+engine\bruteforce-src\src\main.cpp-185-PositionalRootResult searchPositionalRootParallel(Board& board, Color color, int depth,
+engine\bruteforce-src\src\main.cpp-186-                                                   const std::vector<Move>& rootMoves,
+engine\bruteforce-src\src\main.cpp-187-                                                   CsCode csRed, CsCode csBlack,
+engine\bruteforce-src\src\main.cpp-188-                                                   PositionalSearchState& st, int requestedThreads) {
+--
+engine\bruteforce-src\src\main.cpp-252-void runGoBudget(int maxBudget, long long movetimeMs, int fromBudget) {
+engine\bruteforce-src\src\main.cpp-253-    g_searching = true;
+engine\bruteforce-src\src\main.cpp-254-    g_cancelled = false;
+engine\bruteforce-src\src\main.cpp-255-    auto t0 = std::chrono::steady_clock::now();
+engine\bruteforce-src\src\main.cpp-256-    auto deadline = (movetimeMs > 0)
+engine\bruteforce-src\src\main.cpp-257-        ? t0 + std::chrono::milliseconds(movetimeMs)
+engine\bruteforce-src\src\main.cpp-258-        : std::chrono::steady_clock::time_point::max();
+engine\bruteforce-src\src\main.cpp-259-
+engine\bruteforce-src\src\main.cpp-260-    MateSearchState st;
+engine\bruteforce-src\src\main.cpp-261-    st.restrictedSide = g_restrictedSide;
+engine\bruteforce-src\src\main.cpp:262:    st.checkStreakLimit = g_checkStreakLimit;
+engine\bruteforce-src\src\main.cpp-263-    st.ktcBudgetOn = g_ktcBudgetOn;
+engine\bruteforce-src\src\main.cpp-264-    st.cancelled = &g_cancelled;
+engine\bruteforce-src\src\main.cpp-265-    st.deadline = deadline;  // để một mức budget đang chạy dở tự dừng đúng hạn, không tràn qua giờ
+engine\bruteforce-src\src\main.cpp-266-                              // (đã thấy thật: xin movetime 3s nhưng chạy tới 15s — vòng lặp NGOÀI
+engine\bruteforce-src\src\main.cpp-267-                              // chỉ kiểm tra giờ GIỮA các mức, một mức chạy lâu vẫn không bị chặn).
+engine\bruteforce-src\src\main.cpp-268-
+engine\bruteforce-src\src\main.cpp-269-    Board board = g_board;
+engine\bruteforce-src\src\main.cpp-270-    Color color = g_sideToMove;
+engine\bruteforce-src\src\main.cpp-271-    int doneBudget = fromBudget > 1 ? fromBudget - 1 : 0;  // các mức trước đã xong (nếu tiếp tục)
+engine\bruteforce-src\src\main.cpp-272-    ProbeResult lastMate;
+--
+engine\bruteforce-src\src\main.cpp-338-// mọi phạt lặp bằng 0 — vẫn chạy đúng, chỉ là không biết gì về lịch sử).
+engine\bruteforce-src\src\main.cpp-339-void runGoPositional(int maxDepth, long long movetimeMs) {
+engine\bruteforce-src\src\main.cpp-340-    g_searching = true;
+engine\bruteforce-src\src\main.cpp-341-    g_cancelled = false;
+engine\bruteforce-src\src\main.cpp-342-    auto t0 = std::chrono::steady_clock::now();
+engine\bruteforce-src\src\main.cpp-343-    if (movetimeMs <= 0) movetimeMs = AI_MOVE_TIME_LIMIT_MS;  // luôn có hạn giờ, khớp tinh thần bản gốc
+engine\bruteforce-src\src\main.cpp-344-    auto deadline = t0 + std::chrono::milliseconds(movetimeMs);
+engine\bruteforce-src\src\main.cpp-345-
+engine\bruteforce-src\src\main.cpp-346-    PositionalSearchState st;
+engine\bruteforce-src\src\main.cpp-347-    st.restrictedSide = g_restrictedSide;
+engine\bruteforce-src\src\main.cpp:348:    st.checkStreakLimit = g_checkStreakLimit;
+engine\bruteforce-src\src\main.cpp-349-    st.cancelled = &g_cancelled;
+engine\bruteforce-src\src\main.cpp-350-    st.deadline = deadline;  // để một độ sâu đang chạy dở tự dừng đúng hạn, không tràn qua giờ
+engine\bruteforce-src\src\main.cpp-351-    st.history = &g_history;
+engine\bruteforce-src\src\main.cpp-352-
+engine\bruteforce-src\src\main.cpp-353-    Board board = g_board;
+engine\bruteforce-src\src\main.cpp-354-    Color color = g_sideToMove;
+engine\bruteforce-src\src\main.cpp-355-
+engine\bruteforce-src\src\main.cpp-356-    std::vector<Move> ordered;
+engine\bruteforce-src\src\main.cpp-357-    {
+engine\bruteforce-src\src\main.cpp-358-        std::vector<ScoredMoveP> scored;
+--
+engine\bruteforce-src\src\main.cpp-403-    // PHẢI join bất cứ khi nào thread cũ còn joinable — không chỉ khi g_searching còn true.
+engine\bruteforce-src\src\main.cpp-404-    // Một lượt search đã tự xong (mate tìm thấy ngay, thread tự return) mà chưa từng bị join()
+engine\bruteforce-src\src\main.cpp-405-    // vẫn ở trạng thái joinable; gán đè g_searchThread = std::thread(...) cho lượt mới trong khi
+engine\bruteforce-src\src\main.cpp-406-    // đối tượng cũ còn joinable là undefined behavior — std::thread gọi std::terminate(), sập cả
+engine\bruteforce-src\src\main.cpp-407-    // tiến trình (đã thấy thật: exit code 0xC0000005 ngay lượt "go" thứ hai).
+engine\bruteforce-src\src\main.cpp-408-    g_cancelled = true;
+engine\bruteforce-src\src\main.cpp-409-    if (g_searchThread.joinable()) g_searchThread.join();
+engine\bruteforce-src\src\main.cpp-410-}
+engine\bruteforce-src\src\main.cpp-411-
+engine\bruteforce-src\src\main.cpp-412-void handleSetOption(std::istringstream& iss) {
+engine\bruteforce-src\src\main.cpp:413:    // Cùng lý do với handlePosition: g_restrictedSide/g_checkStreakLimit/g_csRoot* bị một search
+engine\bruteforce-src\src\main.cpp-414-    // thread đang chạy đọc vào MateSearchState/PositionalSearchState ở đầu hàm — đổi giữa chừng
+engine\bruteforce-src\src\main.cpp-415-    // (không dừng thread cũ trước) là race, dù ít nghiêm trọng hơn (toàn số nguyên/enum đơn, không
+engine\bruteforce-src\src\main.cpp-416-    // phải cấu trúc lớn như Board) nhưng vẫn là undefined behavior thật sự trong C++.
+engine\bruteforce-src\src\main.cpp-417-    stopSearch();
+engine\bruteforce-src\src\main.cpp-418-    std::string tok, name, value;
+engine\bruteforce-src\src\main.cpp-419-    iss >> tok;  // "name"
+engine\bruteforce-src\src\main.cpp-420-    // Tên option có thể có khoảng trắng (không dùng ở đây, nhưng đọc an toàn tới "value").
+engine\bruteforce-src\src\main.cpp-421-    std::string word;
+engine\bruteforce-src\src\main.cpp-422-    while (iss >> word && word != "value") { name += (name.empty() ? "" : " ") + word; }
+engine\bruteforce-src\src\main.cpp-423-    std::getline(iss, value);
+--
+engine\bruteforce-src\src\main.cpp-428-        // Giữ giao thức option để UI tương thích, nhưng luôn dùng đường tìm kiếm nhanh hơn là một luồng.
+engine\bruteforce-src\src\main.cpp-429-        g_threads = 1;
+engine\bruteforce-src\src\main.cpp-430-    }
+engine\bruteforce-src\src\main.cpp-431-    else if (name == "CheckStreak_RestrictedColor") {
+engine\bruteforce-src\src\main.cpp-432-        // "both" = cả hai bên bị giới hạn (chế độ Duyệt & Điều Khiển của app); "white"/"black" =
+engine\bruteforce-src\src\main.cpp-433-        // chỉ bên đó (chế độ Phân Tích, bất đối xứng); còn lại = tắt luật.
+engine\bruteforce-src\src\main.cpp-434-        g_restrictedSide = (value == "white") ? CsSide::Red
+engine\bruteforce-src\src\main.cpp-435-            : (value == "black") ? CsSide::Black
+engine\bruteforce-src\src\main.cpp-436-            : (value == "both") ? CsSide::Both : CsSide::None;
+engine\bruteforce-src\src\main.cpp-437-    } else if (name == "CheckStreak_Limit") {
+engine\bruteforce-src\src\main.cpp:438:        try { g_checkStreakLimit = std::max(1, std::stoi(value)); } catch (...) {}
+engine\bruteforce-src\src\main.cpp-439-    } else if (name == "CheckStreak_RootRed") {
+engine\bruteforce-src\src\main.cpp-440-        g_csRootRed = parseCheckStreakRootOption(value);
+engine\bruteforce-src\src\main.cpp-441-    } else if (name == "CheckStreak_RootBlack") {
+engine\bruteforce-src\src\main.cpp-442-        g_csRootBlack = parseCheckStreakRootOption(value);
+engine\bruteforce-src\src\main.cpp-443-    } else if (name == "KtcBudget") {
+engine\bruteforce-src\src\main.cpp-444-        g_ktcBudgetOn = (value == "true" || value == "1" || value == "on");
+engine\bruteforce-src\src\main.cpp-445-    }
+engine\bruteforce-src\src\main.cpp-446-}
+engine\bruteforce-src\src\main.cpp-447-
+engine\bruteforce-src\src\main.cpp-448-void handlePosition(std::istringstream& iss) {

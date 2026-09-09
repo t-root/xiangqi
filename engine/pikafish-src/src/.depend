@@ -1,0 +1,426 @@
+attacks.o: attacks.cpp attacks.h bitboard.h types.h misc.h tune.h \
+ magics.h
+benchmark.o: benchmark.cpp benchmark.h numa.h misc.h shm.h types.h tune.h \
+ memory.h
+bitboard.o: bitboard.cpp bitboard.h types.h misc.h tune.h
+engine.o: engine.cpp engine.h misc.h history.h memory.h types.h tune.h \
+ position.h attacks.h bitboard.h nnue/features/half_ka_v2_hm.h \
+ nnue/features/../../bitboard.h nnue/features/../../misc.h \
+ nnue/features/../../types.h nnue/features/../../tune.h \
+ nnue/features/../nnue_common.h nnue/features/../../misc.h nnue/network.h \
+ nnue/../types.h nnue/../tune.h nnue/../misc.h nnue/nnue_architecture.h \
+ nnue/features/half_ka_v2_hm.h nnue/features/full_threats.h \
+ nnue/layers/affine_transform.h nnue/layers/../../memory.h \
+ nnue/layers/../nnue_common.h nnue/layers/../simd.h \
+ nnue/layers/../../types.h nnue/layers/../../tune.h \
+ nnue/layers/../nnue_common.h nnue/layers/affine_transform_sparse_input.h \
+ nnue/layers/../../bitboard.h nnue/layers/../nnz_helper.h \
+ nnue/layers/../simd.h nnue/layers/clipped_relu.h \
+ nnue/layers/sqr_clipped_relu.h nnue/nnue_common.h nnue/nnz_helper.h \
+ nnue/nnue_feature_transformer.h nnue/../position.h \
+ nnue/nnue_accumulator.h nnue/simd.h nnue/nnue_misc.h nnue/../evaluate.h \
+ nnue/../types.h nnue/nnue_misc.h numa.h shm.h search.h \
+ nnue/nnue_accumulator.h score.h timeman.h thread.h thread_native.h tt.h \
+ ucioption.h evaluate.h nnue/nnue_common.h perft.h movegen.h uci.h
+evaluate.o: evaluate.cpp evaluate.h types.h misc.h tune.h nnue/network.h \
+ nnue/../types.h nnue/../tune.h nnue/../misc.h nnue/nnue_architecture.h \
+ nnue/features/half_ka_v2_hm.h nnue/features/../../bitboard.h \
+ nnue/features/../../types.h nnue/features/../../tune.h \
+ nnue/features/../../misc.h nnue/features/../../misc.h \
+ nnue/features/../../types.h nnue/features/../nnue_common.h \
+ nnue/features/../../misc.h nnue/features/full_threats.h \
+ nnue/layers/affine_transform.h nnue/layers/../../memory.h \
+ nnue/layers/../../types.h nnue/layers/../../tune.h \
+ nnue/layers/../../misc.h nnue/layers/../nnue_common.h \
+ nnue/layers/../simd.h nnue/layers/../../types.h \
+ nnue/layers/../nnue_common.h nnue/layers/affine_transform_sparse_input.h \
+ nnue/layers/../../bitboard.h nnue/layers/../nnz_helper.h \
+ nnue/layers/../simd.h nnue/layers/clipped_relu.h \
+ nnue/layers/sqr_clipped_relu.h nnue/nnue_common.h nnue/nnz_helper.h \
+ nnue/nnue_feature_transformer.h nnue/../position.h nnue/../attacks.h \
+ nnue/../bitboard.h nnue/../types.h nnue/../misc.h \
+ nnue/../nnue/features/half_ka_v2_hm.h nnue/nnue_accumulator.h \
+ nnue/simd.h nnue/nnue_misc.h nnue/../evaluate.h nnue/nnue_misc.h \
+ position.h uci.h engine.h history.h memory.h numa.h shm.h search.h \
+ nnue/nnue_accumulator.h score.h timeman.h thread.h thread_native.h tt.h \
+ ucioption.h
+debug.o: external/common/debug.cpp external/common/debug.h
+entropy_common.o: external/common/entropy_common.cpp \
+ external/common/mem.h external/common/compiler.h \
+ external/common/portability_macros.h external/common/debug.h \
+ external/common/zstd_deps.h external/common/error_private.h \
+ external/common/../zstd_errors.h external/common/fse.h \
+ external/common/bitstream.h external/common/bits.h external/common/huf.h
+error_private.o: external/common/error_private.cpp \
+ external/common/error_private.h external/common/../zstd_errors.h \
+ external/common/compiler.h external/common/portability_macros.h \
+ external/common/debug.h external/common/zstd_deps.h
+fse_decompress.o: external/common/fse_decompress.cpp \
+ external/common/debug.h external/common/bitstream.h \
+ external/common/mem.h external/common/compiler.h \
+ external/common/portability_macros.h external/common/zstd_deps.h \
+ external/common/error_private.h external/common/../zstd_errors.h \
+ external/common/bits.h external/common/fse.h
+pool.o: external/common/pool.cpp external/common/../common/allocations.h \
+ external/common/../common/zstd_deps.h \
+ external/common/../common/compiler.h \
+ external/common/../common/portability_macros.h \
+ external/common/../common/../zstd.h \
+ external/common/../common/../zstd_errors.h external/common/zstd_deps.h \
+ external/common/debug.h external/common/pool.h external/common/../zstd.h
+threading.o: external/common/threading.cpp external/common/threading.h \
+ external/common/debug.h
+xxhash.o: external/common/xxhash.cpp external/common/xxhash.h
+zstd_common.o: external/common/zstd_common.cpp \
+ external/common/error_private.h external/common/../zstd_errors.h \
+ external/common/compiler.h external/common/portability_macros.h \
+ external/common/debug.h external/common/zstd_deps.h \
+ external/common/zstd_internal.h external/common/cpu.h \
+ external/common/mem.h external/common/../zstd.h \
+ external/common/../zstd_errors.h external/common/fse.h \
+ external/common/bitstream.h external/common/bits.h external/common/huf.h \
+ external/common/xxhash.h external/common/zstd_trace.h
+huf_decompress.o: external/decompress/huf_decompress.cpp \
+ external/decompress/../common/zstd_deps.h \
+ external/decompress/../common/compiler.h \
+ external/decompress/../common/portability_macros.h \
+ external/decompress/../common/bitstream.h \
+ external/decompress/../common/mem.h \
+ external/decompress/../common/compiler.h \
+ external/decompress/../common/debug.h \
+ external/decompress/../common/zstd_deps.h \
+ external/decompress/../common/error_private.h \
+ external/decompress/../common/../zstd_errors.h \
+ external/decompress/../common/bits.h external/decompress/../common/fse.h \
+ external/decompress/../common/huf.h external/decompress/../common/fse.h \
+ external/decompress/../common/bitstream.h \
+ external/decompress/../common/error_private.h \
+ external/decompress/../common/zstd_internal.h \
+ external/decompress/../common/cpu.h \
+ external/decompress/../common/../zstd.h \
+ external/decompress/../common/../zstd_errors.h \
+ external/decompress/../common/huf.h \
+ external/decompress/../common/xxhash.h \
+ external/decompress/../common/zstd_trace.h \
+ external/decompress/../common/bits.h
+huf_decompress_amd64.o: external/decompress/huf_decompress_amd64.S \
+ external/decompress/../common/portability_macros.h
+zstd_ddict.o: external/decompress/zstd_ddict.cpp \
+ external/decompress/../common/allocations.h \
+ external/decompress/../common/zstd_deps.h \
+ external/decompress/../common/compiler.h \
+ external/decompress/../common/portability_macros.h \
+ external/decompress/../common/../zstd.h \
+ external/decompress/../common/../zstd_errors.h \
+ external/decompress/../common/zstd_deps.h \
+ external/decompress/../common/cpu.h external/decompress/../common/mem.h \
+ external/decompress/../common/debug.h \
+ external/decompress/../common/mem.h external/decompress/../common/fse.h \
+ external/decompress/../common/bitstream.h \
+ external/decompress/../common/error_private.h \
+ external/decompress/../common/../zstd_errors.h \
+ external/decompress/../common/bits.h external/decompress/../common/huf.h \
+ external/decompress/../common/fse.h \
+ external/decompress/zstd_decompress_internal.h \
+ external/decompress/../common/zstd_internal.h \
+ external/decompress/../common/cpu.h external/decompress/../common/huf.h \
+ external/decompress/../common/xxhash.h \
+ external/decompress/../common/zstd_trace.h \
+ external/decompress/zstd_ddict.h external/decompress/../zstd.h
+zstd_decompress.o: external/decompress/zstd_decompress.cpp \
+ external/decompress/../common/zstd_deps.h \
+ external/decompress/../common/allocations.h \
+ external/decompress/../common/zstd_deps.h \
+ external/decompress/../common/compiler.h \
+ external/decompress/../common/portability_macros.h \
+ external/decompress/../common/../zstd.h \
+ external/decompress/../common/../zstd_errors.h \
+ external/decompress/../common/error_private.h \
+ external/decompress/../common/../zstd_errors.h \
+ external/decompress/../common/debug.h \
+ external/decompress/../common/zstd_internal.h \
+ external/decompress/../common/cpu.h external/decompress/../common/mem.h \
+ external/decompress/../common/error_private.h \
+ external/decompress/../common/fse.h \
+ external/decompress/../common/bitstream.h \
+ external/decompress/../common/bits.h external/decompress/../common/huf.h \
+ external/decompress/../common/xxhash.h \
+ external/decompress/../common/zstd_trace.h \
+ external/decompress/../common/mem.h external/decompress/../common/bits.h \
+ external/decompress/../common/fse.h external/decompress/../common/huf.h \
+ external/decompress/../common/xxhash.h \
+ external/decompress/zstd_decompress_internal.h \
+ external/decompress/zstd_ddict.h external/decompress/../zstd.h \
+ external/decompress/zstd_decompress_block.h
+zstd_decompress_block.o: external/decompress/zstd_decompress_block.cpp \
+ external/decompress/../common/zstd_deps.h \
+ external/decompress/../common/compiler.h \
+ external/decompress/../common/portability_macros.h \
+ external/decompress/../common/mem.h \
+ external/decompress/../common/compiler.h \
+ external/decompress/../common/debug.h \
+ external/decompress/../common/zstd_deps.h \
+ external/decompress/../common/fse.h \
+ external/decompress/../common/bitstream.h \
+ external/decompress/../common/mem.h \
+ external/decompress/../common/error_private.h \
+ external/decompress/../common/../zstd_errors.h \
+ external/decompress/../common/bits.h external/decompress/../common/huf.h \
+ external/decompress/../common/fse.h \
+ external/decompress/../common/zstd_internal.h \
+ external/decompress/../common/cpu.h \
+ external/decompress/../common/../zstd.h \
+ external/decompress/../common/../zstd_errors.h \
+ external/decompress/../common/huf.h \
+ external/decompress/../common/xxhash.h \
+ external/decompress/../common/zstd_trace.h \
+ external/decompress/zstd_decompress_internal.h \
+ external/decompress/zstd_decompress_block.h \
+ external/decompress/../zstd.h external/decompress/../common/bits.h
+main.o: main.cpp attacks.h bitboard.h types.h misc.h tune.h position.h \
+ nnue/features/half_ka_v2_hm.h nnue/features/../../bitboard.h \
+ nnue/features/../../misc.h nnue/features/../../types.h \
+ nnue/features/../../tune.h nnue/features/../nnue_common.h \
+ nnue/features/../../misc.h uci.h engine.h history.h memory.h \
+ nnue/network.h nnue/../types.h nnue/../tune.h nnue/../misc.h \
+ nnue/nnue_architecture.h nnue/features/half_ka_v2_hm.h \
+ nnue/features/full_threats.h nnue/layers/affine_transform.h \
+ nnue/layers/../../memory.h nnue/layers/../nnue_common.h \
+ nnue/layers/../simd.h nnue/layers/../../types.h nnue/layers/../../tune.h \
+ nnue/layers/../nnue_common.h nnue/layers/affine_transform_sparse_input.h \
+ nnue/layers/../../bitboard.h nnue/layers/../nnz_helper.h \
+ nnue/layers/../simd.h nnue/layers/clipped_relu.h \
+ nnue/layers/sqr_clipped_relu.h nnue/nnue_common.h nnue/nnz_helper.h \
+ nnue/nnue_feature_transformer.h nnue/../position.h \
+ nnue/nnue_accumulator.h nnue/simd.h nnue/nnue_misc.h nnue/../evaluate.h \
+ nnue/../types.h nnue/nnue_misc.h numa.h shm.h search.h \
+ nnue/nnue_accumulator.h score.h timeman.h thread.h thread_native.h tt.h \
+ ucioption.h
+memory.o: memory.cpp memory.h types.h misc.h tune.h
+misc.o: misc.cpp misc.h types.h tune.h external/zstd.h \
+ external/zstd_errors.h
+movegen.o: movegen.cpp movegen.h misc.h types.h tune.h attacks.h \
+ bitboard.h position.h nnue/features/half_ka_v2_hm.h \
+ nnue/features/../../bitboard.h nnue/features/../../misc.h \
+ nnue/features/../../types.h nnue/features/../../tune.h \
+ nnue/features/../nnue_common.h nnue/features/../../misc.h
+movepick.o: movepick.cpp movepick.h history.h memory.h types.h misc.h \
+ tune.h position.h attacks.h bitboard.h nnue/features/half_ka_v2_hm.h \
+ nnue/features/../../bitboard.h nnue/features/../../misc.h \
+ nnue/features/../../types.h nnue/features/../../tune.h \
+ nnue/features/../nnue_common.h nnue/features/../../misc.h movegen.h
+full_threats.o: nnue/features/full_threats.cpp \
+ nnue/features/full_threats.h nnue/features/../../misc.h \
+ nnue/features/../../types.h nnue/features/../../misc.h \
+ nnue/features/../../tune.h nnue/features/../nnue_common.h \
+ nnue/features/../../misc.h nnue/features/../../attacks.h \
+ nnue/features/../../bitboard.h nnue/features/../../types.h \
+ nnue/features/../../bitboard.h nnue/features/../../position.h \
+ nnue/features/../../attacks.h \
+ nnue/features/../../nnue/features/half_ka_v2_hm.h \
+ nnue/features/../../nnue/features/../../bitboard.h \
+ nnue/features/../../nnue/features/../../misc.h \
+ nnue/features/../../nnue/features/../../types.h \
+ nnue/features/../../nnue/features/../../tune.h \
+ nnue/features/../../nnue/features/../nnue_common.h \
+ nnue/features/half_ka_v2_hm.h
+half_ka_v2_hm.o: nnue/features/half_ka_v2_hm.cpp \
+ nnue/features/half_ka_v2_hm.h nnue/features/../../bitboard.h \
+ nnue/features/../../types.h nnue/features/../../misc.h \
+ nnue/features/../../tune.h nnue/features/../../misc.h \
+ nnue/features/../../types.h nnue/features/../nnue_common.h \
+ nnue/features/../../misc.h nnue/features/../../position.h \
+ nnue/features/../../attacks.h nnue/features/../../bitboard.h \
+ nnue/features/../../nnue/features/half_ka_v2_hm.h
+network.o: nnue/network.cpp nnue/network.h nnue/../types.h nnue/../misc.h \
+ nnue/../tune.h nnue/../misc.h nnue/nnue_architecture.h \
+ nnue/features/half_ka_v2_hm.h nnue/features/../../bitboard.h \
+ nnue/features/../../types.h nnue/features/../../tune.h \
+ nnue/features/../../misc.h nnue/features/../../misc.h \
+ nnue/features/../../types.h nnue/features/../nnue_common.h \
+ nnue/features/../../misc.h nnue/features/full_threats.h \
+ nnue/layers/affine_transform.h nnue/layers/../../memory.h \
+ nnue/layers/../../types.h nnue/layers/../../tune.h \
+ nnue/layers/../../misc.h nnue/layers/../nnue_common.h \
+ nnue/layers/../simd.h nnue/layers/../../types.h \
+ nnue/layers/../nnue_common.h nnue/layers/affine_transform_sparse_input.h \
+ nnue/layers/../../bitboard.h nnue/layers/../nnz_helper.h \
+ nnue/layers/../simd.h nnue/layers/clipped_relu.h \
+ nnue/layers/sqr_clipped_relu.h nnue/nnue_common.h nnue/nnz_helper.h \
+ nnue/nnue_feature_transformer.h nnue/../position.h nnue/../attacks.h \
+ nnue/../bitboard.h nnue/../types.h nnue/../nnue/features/half_ka_v2_hm.h \
+ nnue/nnue_accumulator.h nnue/simd.h nnue/nnue_misc.h nnue/../evaluate.h
+nnue_accumulator.o: nnue/nnue_accumulator.cpp nnue/nnue_accumulator.h \
+ nnue/../types.h nnue/../misc.h nnue/../tune.h nnue/../misc.h \
+ nnue/nnue_architecture.h nnue/features/half_ka_v2_hm.h \
+ nnue/features/../../bitboard.h nnue/features/../../types.h \
+ nnue/features/../../tune.h nnue/features/../../misc.h \
+ nnue/features/../../misc.h nnue/features/../../types.h \
+ nnue/features/../nnue_common.h nnue/features/../../misc.h \
+ nnue/features/full_threats.h nnue/layers/affine_transform.h \
+ nnue/layers/../../memory.h nnue/layers/../../types.h \
+ nnue/layers/../../tune.h nnue/layers/../../misc.h \
+ nnue/layers/../nnue_common.h nnue/layers/../simd.h \
+ nnue/layers/../../types.h nnue/layers/../nnue_common.h \
+ nnue/layers/affine_transform_sparse_input.h nnue/layers/../../bitboard.h \
+ nnue/layers/../nnz_helper.h nnue/layers/../simd.h \
+ nnue/layers/clipped_relu.h nnue/layers/sqr_clipped_relu.h \
+ nnue/nnue_common.h nnue/nnz_helper.h nnue/../bitboard.h \
+ nnue/../position.h nnue/../attacks.h nnue/../bitboard.h nnue/../types.h \
+ nnue/../nnue/features/half_ka_v2_hm.h nnue/nnue_feature_transformer.h \
+ nnue/simd.h
+nnue_misc.o: nnue/nnue_misc.cpp nnue/nnue_misc.h nnue/../misc.h \
+ nnue/../types.h nnue/../misc.h nnue/../tune.h nnue/nnue_architecture.h \
+ nnue/features/half_ka_v2_hm.h nnue/features/../../bitboard.h \
+ nnue/features/../../types.h nnue/features/../../tune.h \
+ nnue/features/../../misc.h nnue/features/../../misc.h \
+ nnue/features/../../types.h nnue/features/../nnue_common.h \
+ nnue/features/../../misc.h nnue/features/full_threats.h \
+ nnue/layers/affine_transform.h nnue/layers/../../memory.h \
+ nnue/layers/../../types.h nnue/layers/../../tune.h \
+ nnue/layers/../../misc.h nnue/layers/../nnue_common.h \
+ nnue/layers/../simd.h nnue/layers/../../types.h \
+ nnue/layers/../nnue_common.h nnue/layers/affine_transform_sparse_input.h \
+ nnue/layers/../../bitboard.h nnue/layers/../nnz_helper.h \
+ nnue/layers/../simd.h nnue/layers/clipped_relu.h \
+ nnue/layers/sqr_clipped_relu.h nnue/nnue_common.h nnue/nnz_helper.h \
+ nnue/../evaluate.h nnue/../types.h nnue/../position.h nnue/../attacks.h \
+ nnue/../bitboard.h nnue/../nnue/features/half_ka_v2_hm.h nnue/../uci.h \
+ nnue/../engine.h nnue/../history.h nnue/../memory.h nnue/../position.h \
+ nnue/../nnue/network.h nnue/../nnue/../types.h nnue/../nnue/../tune.h \
+ nnue/../nnue/../misc.h nnue/../nnue/nnue_architecture.h \
+ nnue/../nnue/nnue_feature_transformer.h nnue/../nnue/../position.h \
+ nnue/../nnue/nnue_accumulator.h nnue/../nnue/nnue_common.h \
+ nnue/../nnue/simd.h nnue/../nnue/nnue_misc.h nnue/../nnue/nnue_misc.h \
+ nnue/../numa.h nnue/../shm.h nnue/../search.h \
+ nnue/../nnue/nnue_accumulator.h nnue/../score.h nnue/../timeman.h \
+ nnue/../thread.h nnue/../thread_native.h nnue/../tt.h \
+ nnue/../ucioption.h nnue/network.h nnue/nnue_accumulator.h
+position.o: position.cpp position.h attacks.h bitboard.h types.h misc.h \
+ tune.h nnue/features/half_ka_v2_hm.h nnue/features/../../bitboard.h \
+ nnue/features/../../misc.h nnue/features/../../types.h \
+ nnue/features/../../tune.h nnue/features/../nnue_common.h \
+ nnue/features/../../misc.h history.h memory.h movegen.h \
+ nnue/nnue_common.h nnue/nnue_architecture.h \
+ nnue/features/half_ka_v2_hm.h nnue/features/full_threats.h \
+ nnue/layers/affine_transform.h nnue/layers/../../memory.h \
+ nnue/layers/../nnue_common.h nnue/layers/../simd.h \
+ nnue/layers/../../types.h nnue/layers/../../tune.h \
+ nnue/layers/../nnue_common.h nnue/layers/affine_transform_sparse_input.h \
+ nnue/layers/../../bitboard.h nnue/layers/../nnz_helper.h \
+ nnue/layers/../simd.h nnue/layers/clipped_relu.h \
+ nnue/layers/sqr_clipped_relu.h nnue/nnue_common.h nnue/nnz_helper.h tt.h \
+ uci.h engine.h nnue/network.h nnue/../types.h nnue/../tune.h \
+ nnue/../misc.h nnue/nnue_architecture.h nnue/nnue_feature_transformer.h \
+ nnue/../position.h nnue/nnue_accumulator.h nnue/simd.h nnue/nnue_misc.h \
+ nnue/../evaluate.h nnue/../types.h nnue/nnue_misc.h numa.h shm.h \
+ search.h nnue/nnue_accumulator.h score.h timeman.h thread.h \
+ thread_native.h ucioption.h
+score.o: score.cpp score.h types.h misc.h tune.h uci.h engine.h history.h \
+ memory.h position.h attacks.h bitboard.h nnue/features/half_ka_v2_hm.h \
+ nnue/features/../../bitboard.h nnue/features/../../misc.h \
+ nnue/features/../../types.h nnue/features/../../tune.h \
+ nnue/features/../nnue_common.h nnue/features/../../misc.h nnue/network.h \
+ nnue/../types.h nnue/../tune.h nnue/../misc.h nnue/nnue_architecture.h \
+ nnue/features/half_ka_v2_hm.h nnue/features/full_threats.h \
+ nnue/layers/affine_transform.h nnue/layers/../../memory.h \
+ nnue/layers/../nnue_common.h nnue/layers/../simd.h \
+ nnue/layers/../../types.h nnue/layers/../../tune.h \
+ nnue/layers/../nnue_common.h nnue/layers/affine_transform_sparse_input.h \
+ nnue/layers/../../bitboard.h nnue/layers/../nnz_helper.h \
+ nnue/layers/../simd.h nnue/layers/clipped_relu.h \
+ nnue/layers/sqr_clipped_relu.h nnue/nnue_common.h nnue/nnz_helper.h \
+ nnue/nnue_feature_transformer.h nnue/../position.h \
+ nnue/nnue_accumulator.h nnue/simd.h nnue/nnue_misc.h nnue/../evaluate.h \
+ nnue/../types.h nnue/nnue_misc.h numa.h shm.h search.h \
+ nnue/nnue_accumulator.h timeman.h thread.h thread_native.h tt.h \
+ ucioption.h
+search.o: search.cpp search.h history.h memory.h types.h misc.h tune.h \
+ position.h attacks.h bitboard.h nnue/features/half_ka_v2_hm.h \
+ nnue/features/../../bitboard.h nnue/features/../../misc.h \
+ nnue/features/../../types.h nnue/features/../../tune.h \
+ nnue/features/../nnue_common.h nnue/features/../../misc.h \
+ nnue/nnue_accumulator.h nnue/../types.h nnue/../tune.h nnue/../misc.h \
+ nnue/nnue_architecture.h nnue/features/half_ka_v2_hm.h \
+ nnue/features/full_threats.h nnue/layers/affine_transform.h \
+ nnue/layers/../../memory.h nnue/layers/../nnue_common.h \
+ nnue/layers/../simd.h nnue/layers/../../types.h nnue/layers/../../tune.h \
+ nnue/layers/../nnue_common.h nnue/layers/affine_transform_sparse_input.h \
+ nnue/layers/../../bitboard.h nnue/layers/../nnz_helper.h \
+ nnue/layers/../simd.h nnue/layers/clipped_relu.h \
+ nnue/layers/sqr_clipped_relu.h nnue/nnue_common.h nnue/nnz_helper.h \
+ numa.h shm.h score.h timeman.h evaluate.h movegen.h movepick.h \
+ nnue/network.h nnue/nnue_feature_transformer.h nnue/../position.h \
+ nnue/nnue_accumulator.h nnue/simd.h nnue/nnue_misc.h nnue/../evaluate.h \
+ thread.h thread_native.h tt.h uci.h engine.h nnue/nnue_misc.h \
+ ucioption.h
+thread.o: thread.cpp thread.h memory.h types.h misc.h tune.h numa.h shm.h \
+ position.h attacks.h bitboard.h nnue/features/half_ka_v2_hm.h \
+ nnue/features/../../bitboard.h nnue/features/../../misc.h \
+ nnue/features/../../types.h nnue/features/../../tune.h \
+ nnue/features/../nnue_common.h nnue/features/../../misc.h search.h \
+ history.h nnue/nnue_accumulator.h nnue/../types.h nnue/../tune.h \
+ nnue/../misc.h nnue/nnue_architecture.h nnue/features/half_ka_v2_hm.h \
+ nnue/features/full_threats.h nnue/layers/affine_transform.h \
+ nnue/layers/../../memory.h nnue/layers/../nnue_common.h \
+ nnue/layers/../simd.h nnue/layers/../../types.h nnue/layers/../../tune.h \
+ nnue/layers/../nnue_common.h nnue/layers/affine_transform_sparse_input.h \
+ nnue/layers/../../bitboard.h nnue/layers/../nnz_helper.h \
+ nnue/layers/../simd.h nnue/layers/clipped_relu.h \
+ nnue/layers/sqr_clipped_relu.h nnue/nnue_common.h nnue/nnz_helper.h \
+ score.h timeman.h thread_native.h movegen.h uci.h engine.h \
+ nnue/network.h nnue/nnue_feature_transformer.h nnue/../position.h \
+ nnue/nnue_accumulator.h nnue/simd.h nnue/nnue_misc.h nnue/../evaluate.h \
+ nnue/../types.h nnue/nnue_misc.h tt.h ucioption.h
+timeman.o: timeman.cpp timeman.h misc.h search.h history.h memory.h \
+ types.h tune.h position.h attacks.h bitboard.h \
+ nnue/features/half_ka_v2_hm.h nnue/features/../../bitboard.h \
+ nnue/features/../../misc.h nnue/features/../../types.h \
+ nnue/features/../../tune.h nnue/features/../nnue_common.h \
+ nnue/features/../../misc.h nnue/nnue_accumulator.h nnue/../types.h \
+ nnue/../tune.h nnue/../misc.h nnue/nnue_architecture.h \
+ nnue/features/half_ka_v2_hm.h nnue/features/full_threats.h \
+ nnue/layers/affine_transform.h nnue/layers/../../memory.h \
+ nnue/layers/../nnue_common.h nnue/layers/../simd.h \
+ nnue/layers/../../types.h nnue/layers/../../tune.h \
+ nnue/layers/../nnue_common.h nnue/layers/affine_transform_sparse_input.h \
+ nnue/layers/../../bitboard.h nnue/layers/../nnz_helper.h \
+ nnue/layers/../simd.h nnue/layers/clipped_relu.h \
+ nnue/layers/sqr_clipped_relu.h nnue/nnue_common.h nnue/nnz_helper.h \
+ numa.h shm.h score.h ucioption.h
+tt.o: tt.cpp tt.h misc.h memory.h types.h tune.h thread.h numa.h shm.h \
+ position.h attacks.h bitboard.h nnue/features/half_ka_v2_hm.h \
+ nnue/features/../../bitboard.h nnue/features/../../misc.h \
+ nnue/features/../../types.h nnue/features/../../tune.h \
+ nnue/features/../nnue_common.h nnue/features/../../misc.h search.h \
+ history.h nnue/nnue_accumulator.h nnue/../types.h nnue/../tune.h \
+ nnue/../misc.h nnue/nnue_architecture.h nnue/features/half_ka_v2_hm.h \
+ nnue/features/full_threats.h nnue/layers/affine_transform.h \
+ nnue/layers/../../memory.h nnue/layers/../nnue_common.h \
+ nnue/layers/../simd.h nnue/layers/../../types.h nnue/layers/../../tune.h \
+ nnue/layers/../nnue_common.h nnue/layers/affine_transform_sparse_input.h \
+ nnue/layers/../../bitboard.h nnue/layers/../nnz_helper.h \
+ nnue/layers/../simd.h nnue/layers/clipped_relu.h \
+ nnue/layers/sqr_clipped_relu.h nnue/nnue_common.h nnue/nnz_helper.h \
+ score.h timeman.h thread_native.h
+tune.o: tune.cpp tune.h misc.h ucioption.h
+uci.o: uci.cpp uci.h engine.h misc.h history.h memory.h types.h tune.h \
+ position.h attacks.h bitboard.h nnue/features/half_ka_v2_hm.h \
+ nnue/features/../../bitboard.h nnue/features/../../misc.h \
+ nnue/features/../../types.h nnue/features/../../tune.h \
+ nnue/features/../nnue_common.h nnue/features/../../misc.h nnue/network.h \
+ nnue/../types.h nnue/../tune.h nnue/../misc.h nnue/nnue_architecture.h \
+ nnue/features/half_ka_v2_hm.h nnue/features/full_threats.h \
+ nnue/layers/affine_transform.h nnue/layers/../../memory.h \
+ nnue/layers/../nnue_common.h nnue/layers/../simd.h \
+ nnue/layers/../../types.h nnue/layers/../../tune.h \
+ nnue/layers/../nnue_common.h nnue/layers/affine_transform_sparse_input.h \
+ nnue/layers/../../bitboard.h nnue/layers/../nnz_helper.h \
+ nnue/layers/../simd.h nnue/layers/clipped_relu.h \
+ nnue/layers/sqr_clipped_relu.h nnue/nnue_common.h nnue/nnz_helper.h \
+ nnue/nnue_feature_transformer.h nnue/../position.h \
+ nnue/nnue_accumulator.h nnue/simd.h nnue/nnue_misc.h nnue/../evaluate.h \
+ nnue/../types.h nnue/nnue_misc.h numa.h shm.h search.h \
+ nnue/nnue_accumulator.h score.h timeman.h thread.h thread_native.h tt.h \
+ ucioption.h benchmark.h movegen.h
+ucioption.o: ucioption.cpp ucioption.h misc.h
