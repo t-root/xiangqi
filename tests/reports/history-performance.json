@@ -1,0 +1,44 @@
+{
+  "timestamp": "2026-09-09T19:11:44.174Z",
+  "node": "v22.19.0",
+  "iterations": 150,
+  "method": "Actual UI state builder and serializer in Node VM; sparse legal rook-cycle fixture; includes copying, replay validation, check streak and cache signatures. Synthetic long histories may exceed normal game adjudication. Excludes native/WASM replay, network, search and rendering.",
+  "samples": [
+    {
+      "plies": 0,
+      "medianMs": 0.448,
+      "p95Ms": 0.756,
+      "commandBytes": 49
+    },
+    {
+      "plies": 4,
+      "medianMs": 0.567,
+      "p95Ms": 0.688,
+      "commandBytes": 75
+    },
+    {
+      "plies": 40,
+      "medianMs": 1.5,
+      "p95Ms": 2.766,
+      "commandBytes": 255
+    },
+    {
+      "plies": 120,
+      "medianMs": 3.518,
+      "p95Ms": 6.468,
+      "commandBytes": 655
+    },
+    {
+      "plies": 240,
+      "medianMs": 6.783,
+      "p95Ms": 16.322,
+      "commandBytes": 1255
+    },
+    {
+      "plies": 500,
+      "medianMs": 10.639,
+      "p95Ms": 17.663,
+      "commandBytes": 2555
+    }
+  ]
+}

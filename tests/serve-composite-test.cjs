@@ -21,7 +21,7 @@ const server=http.createServer((req,res)=>{
  res.setHeader('Content-Type',target.endsWith('.wasm')?'application/wasm':target.endsWith('.js')?'text/javascript':target.endsWith('.html')?'text/html; charset=utf-8':'application/octet-stream');
  fs.readFile(target,(err,data)=>{if(err){res.writeHead(404);return res.end('Not found');}
   if(isTest)data=data.toString('utf8').replaceAll('ws://localhost:8899','ws://127.0.0.1:19989').replaceAll('ws://localhost:8900','ws://127.0.0.1:19990')
-   .replace('</body>', '<script src="/tests/browser/' + (url.searchParams.has('line') ? 'guide-line-test.js' : url.searchParams.has('cache') ? 'cache-repro.js' : 'composite-browser-test.js') + '"></script></body>');
+   .replace('</body>', '<script src="/tests/browser/' + (url.searchParams.has('history') ? 'history-test.js' : url.searchParams.has('line') ? 'guide-line-test.js' : url.searchParams.has('cache') ? 'cache-repro.js' : 'composite-browser-test.js') + '"></script></body>');
   res.end(data);
  });
 });

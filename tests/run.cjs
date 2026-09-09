@@ -8,6 +8,8 @@ suite.push('pikafish-cache-order.cjs');
 suite.push('pikafish-cache-adapter.cjs');
 suite.push('guide-line-current.cjs');
 suite.push('guide-line-build.cjs');
+suite.push('bruteforce-proof-line.cjs');
+suite.push('history-regression.cjs');
 for(const file of suite){
     console.log('\n>>> '+file);
     const result=spawnSync(process.execPath,[path.join(__dirname,file)],{cwd:path.resolve(__dirname,'..'),stdio:'inherit',windowsHide:true});

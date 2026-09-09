@@ -9,6 +9,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   setSideControl('red','human');setSideControl('black','human');
   gameUsesAnalysisRule=true;applyAnalysisCheckStreakRule('red');
   positionHistory=[repetitionEntry(board,currentPlayer,null)];liveCheckStreak={red:0,black:0};
+  resetRepetitionWindow();
   guideSide='red';guideAttacker='red';guideEngine=new URLSearchParams(location.search).get('engine')||'pikafish';guideActive=true;guideMode='win';
   guideMovesTarget=4;guideMaxMoves=4;guideMovesUsed=0;guideOfferLocked=false;guideThinking=false;
   getAnalysisTimeLimitMs=()=>600;resetGuidePlanCaches();

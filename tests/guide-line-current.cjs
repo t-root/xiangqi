@@ -3,6 +3,7 @@ const parser=require('../engine/node_modules/@babel/parser');
 const html=fs.readFileSync(require('node:path').join(__dirname,'../xiangqi-analyzer.html'),'utf8');
 const c=vm.createContext({guideLineKey:'',guideActive:true,linePreviewGameSnapshot:null,board:'B',boardKey:b=>b,
  currentPlayer:'black',guideSide:'red',guideBestMove:null,lineViewIndex:2,lineViewBuildStatus:'old',
+ currentGuideLineEngine:()=>'',
  lineViewSteps:[{board:'A'},{board:'B'},{board:'C'}],refreshLineViewRow(){}});
 c.buildLineView=(board)=>{c.lineViewSteps=[{board}];c.lineViewIndex=0;};
 for(const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi))for(const n of parser.parse(m[1]).program.body)

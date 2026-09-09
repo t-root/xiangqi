@@ -106,6 +106,14 @@ Thêm `&defense=1` để kiểm tra lượt Đen sau Pháo Đỏ `a0a4`, mốc c
 
 Các file tại `upstream/pikafish/tests/` được giữ nguyên từ commit `2c5c998c211d524d26c38e7e3e71d51bc24cbe64`. Bản sao này còn các bài Stockfish/chess/Chess960, tên executable `stockfish`, và yêu cầu Bash/expect/Python/Valgrind tùy bài. **Không chạy cả thư mục này như bộ test cờ tướng mặc định.** Đọc từng bài và điều chỉnh môi trường phù hợp trước; bộ native riêng phía trên là bộ dùng cho ứng dụng này.
 
+## Lịch sử đầu vào engine
+
+- `node tests/history-regression.cjs`: lịch sử đầy đủ qua ăn quân, hoàn tác/đi tới, nhánh biến thể, khóa cache, phát hiện lịch sử lệch và lệnh đánh giá Pikafish Native/Web. Có trong bộ chạy chính.
+- Với máy chủ thử `serve-composite-test.cjs`, mở `/__combo-test?history=1&mode=nativecombo`, rồi `mode=webcombo`. Kiểm tra lệnh thực tế vào cả hai engine, nước trả về, can thiệp biến thể và mở lại hướng dẫn.
+- `node tests/history-performance.cjs`: đo riêng chi phí chuẩn bị trạng thái/lệnh, ghi `tests/reports/history-performance.json`. Không đo tốc độ tìm nước, thời gian truyền lệnh hoặc lượng RAM thực tế.
+
+Lịch sử gốc giữ mọi nước kể từ thế nhập/đầu ván; tên `movesSinceCapture` được giữ cho tương thích snapshot nhưng không còn xóa khi ăn quân. `positionHistory` vẫn là cửa sổ rút gọn của bộ phân xử nội bộ. Không dùng cửa sổ này thay cho lịch sử đầu vào Native/Web.
+
 ## Quy ước cho AI
 
 - Chọn test phù hợp với thay đổi; thay đổi engine/cầu nối/phối hợp nên chạy bộ chính.

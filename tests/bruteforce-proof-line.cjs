@@ -1,0 +1,36 @@
+const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
+const parser = require('../engine/node_modules/@babel/parser');
+const html = fs.readFileSync(require('node:path').join(__dirname, '../xiangqi-analyzer.html'), 'utf8');
+let source;
+for (const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) {
+  for (const n of parser.parse(m[1]).program.body) {
+    if (n.type === 'FunctionDeclaration' && n.id.name === 'refineWorstCaseLineBruteForce') source = m[1].slice(n.start, n.end);
+  }
+}
+async function run(end, budget, skip = false) {
+  const commands = [];
+  const move = { from: {row:0,col:0}, to:{row:0,col:1} };
+  const ws = {send:s=>commands.push(s)};
+  const c = vm.createContext({MATE_MAX_PLY:128, worstLineToken:1, checkStreakRuleOn:false,
+    detectHardwareConcurrency:()=>2, prepareBruteForceQuery:async()=>ws,
+    cloneBoard:b=>Object.assign([[{},null]], {ply:b.ply||0}),
+    generateLegalMoves:b=>b.ply>=end?[]:[move],
+    csEncodeForProtocol:String, boardToXiangqiFen:(b,s)=>`${b.ply}/${s}`,
+    buildAnalysisEnginePositionState:(board,side)=>({board,side,repetitionMoves:[]}),
+    buildHypotheticalStateAfterMove:(state,move)=>({board:{ply:state.board.ply+1},side:state.side==='red'?'black':'red',repetitionMoves:[...state.repetitionMoves,move]}),
+    buildEnginePositionState:state=>({positionCommand:'position fen 0/red'+(state.repetitionMoves.length?' moves '+state.repetitionMoves.map(()=>'a0b0').join(' '):'')}),
+    runBruteForceGo:async()=>({moveStr:'a0b0'}), parseUciMove:()=>move,
+    isKtcBudgetSkip:()=>skip, makeMoveInPlace:b=>b.ply++, otherSide:s=>s==='red'?'black':'red'});
+  vm.runInContext(source,c);
+  const result = await c.refineWorstCaseLineBruteForce({ply:0},'red','red',budget,{red:7,black:9},1);
+  return {result,commands};
+}
+(async()=>{
+  let t=await run(3,4); assert.equal(t.result.line.length,3); assert.equal(t.result.conLai.at(-1),2);
+  assert.ok(t.commands.includes('setoption name CheckStreak_RootRed value 7'));
+  assert.ok(t.commands.includes('position fen 0/red moves a0b0 a0b0'));
+  t=await run(15,1,true); assert.equal(t.result.line.length,15);
+  t=await run(2,4); assert.equal(t.result.incomplete,true);
+  t=await run(5,1); assert.equal(t.result.incomplete,true);
+  console.log('PASS BF proof: early mate, KTC long line, losing terminal, exhausted budget, root streak');
+})().catch(e=>{console.error(e);process.exitCode=1;});
