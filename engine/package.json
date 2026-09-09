@@ -1,0 +1,38 @@
+{
+  "name": "engine",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "bin": "server.js",
+  "scripts": {
+    "test": "node ../tests/run.cjs",
+    "build": "pkg . --output ../dist/XiangqiAnalyzer.exe"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ws": "^8.21.1"
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "^6.22.0"
+  },
+  "pkg": {
+    "targets": [
+      "node22-win-x64"
+    ],
+    "assets": [
+      "pikafish/pikafish-bmi2.exe",
+      "pikafish/pikafish.nnue",
+      "bruteforce-src/src/bruteforce.exe",
+      "../xiangqi-analyzer.html",
+      "../pikafish-web/pikafish.js",
+      "../pikafish-web/pikafish.wasm",
+      "../pikafish-web/pikafish.data",
+      "../bruteforce-web/bruteforce.js",
+      "../bruteforce-web/bruteforce.wasm",
+      "../vision/ort/*",
+      "../vision/models/*"
+    ]
+  }
+}

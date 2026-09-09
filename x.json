@@ -1,0 +1,302 @@
+[
+  {
+    "name": "Thế cờ 1",
+    "board": "9/5k3/9/9/5C3/9/9/4K4/2c6/C8"
+  },
+  {
+    "name": "Thế cờ 2",
+    "board": "9/4P4/4bk3/3R5/9/9/2CC5/3ncr3/1p3p3/2cK5"
+  },
+  {
+    "name": "Thế cờ 3",
+    "board": "6r2/4R1CNn/5k3/9/9/9/9/c8/4K4/9"
+  },
+  {
+    "name": "Thế cờ 4",
+    "board": "4N4/3PPP3/3kb4/5R3/9/9/5CC2/3rpcc2/3p5/5K3"
+  },
+  {
+    "name": "Thế cờ 5",
+    "board": "3k5/3rrP3/3PP2n1/7N1/9/9/9/9/3K5/9"
+  },
+  {
+    "name": "Thế cờ 6",
+    "board": "5k3/4P4/3cCr3/8P/P4RN2/9/7p1/9/4p4/3p1K3"
+  },
+  {
+    "name": "Thế cờ 7",
+    "board": "8c/4RP2r/5k3/9/9/9/9/9/9/4K3C"
+  },
+  {
+    "name": "Thế cờ 8",
+    "board": "n3N4/3PP4/3kb4/9/9/5R3/4cCC2/3r1pc2/3p5/5K3"
+  },
+  {
+    "name": "Thế cờ 9",
+    "board": "c2aka3/4n4/4c4/9/9/9/9/4C4/4N4/C2AKA3"
+  },
+  {
+    "name": "Thế cờ 10",
+    "board": "4nN3/2PP5/3kb4/9/5R3/9/5CC2/1p1rpcc2/2p6/5K3"
+  },
+  {
+    "name": "Thế cờ 11",
+    "board": "9/5P3/3a1k3/9/CC2r2r1/9/9/8B/4A4/3AK1B2"
+  },
+  {
+    "name": "Thế cờ 12",
+    "board": "c2aka2c/4n4/9/9/9/9/9/9/4K4/C7C"
+  },
+  {
+    "name": "Thế cờ 13",
+    "board": "9/5k3/5C3/8c/9/9/9/9/4K4/4C4"
+  },
+  {
+    "name": "Thế cờ 14",
+    "board": "9/3PP4/3kb4/9/5R3/5C3/6C2/3rpcc2/9/5K3"
+  },
+  {
+    "name": "Thế cờ 15",
+    "board": "5k3/4Pc3/3P5/9/9/9/9/5K3/4p4/3pn4"
+  },
+  {
+    "name": "Thế cờ 16",
+    "board": "5k3/9/9/9/9/9/9/3CK4/1c7/1C7"
+  },
+  {
+    "name": "Thế cờ 17",
+    "board": "9/4P4/4bk3/3R5/9/9/2CC5/3ncr3/p4p3/2cK5"
+  },
+  {
+    "name": "Thế cờ 18",
+    "board": "9/4P4/4bk3/3R5/9/9/3C5/2Cncr3/p4p3/2cK5"
+  },
+  {
+    "name": "Thế cờ 19",
+    "board": "9/4P1N2/3kb4/3r5/5R3/9/5CC2/4pnc2/1cp6/5K3"
+  },
+  {
+    "name": "Thế cờ 20",
+    "board": "9/4P4/4bk3/3R5/9/9/3C5/2Cncr3/1p3p3/2cK5"
+  },
+  {
+    "name": "Thế cờ 21",
+    "board": "4N4/3PPP3/3kb4/5R3/9/6C2/5C3/3rpcc2/3p5/5K3"
+  },
+  {
+    "name": "Thế cờ 22",
+    "board": "5k3/4P4/3cCr2P/8P/P5N2/p8/5R1p1/9/4p4/p2p1K3"
+  },
+  {
+    "name": "Thế cờ 23",
+    "board": "C2crk3/4n4/9/5P3/9/9/9/5K3/9/C8"
+  },
+  {
+    "name": "Thế cờ 24",
+    "board": "3N5/3PP4/4bk3/9/4R4/2C6/3C5/3K5/2n1p4/2c2r3"
+  },
+  {
+    "name": "Thế cờ 25",
+    "board": "5k3/9/9/9/9/9/9/3CK4/2c6/C8"
+  },
+  {
+    "name": "Thế cờ 26",
+    "board": "5k3/9/9/9/9/9/9/3CK4/2c6/5C3"
+  },
+  {
+    "name": "Thế cờ 27",
+    "board": "5k3/4P4/3cCr2P/8P/P5N2/9/5R1p1/9/4p4/3p1K3"
+  },
+  {
+    "name": "Thế cờ 28",
+    "board": "2n1r4/4PN3/3kb4/5R3/9/5C3/6C2/3rpcc2/3p5/5K3"
+  },
+  {
+    "name": "Thế cờ 29",
+    "board": "4N1b2/3PP4/3kcRC2/9/1P4b2/5C3/2p6/3r1pc2/3p5/5K3"
+  },
+  {
+    "name": "Thế cờ 30",
+    "board": "9/3PPP3/4bk3/3R5/9/3C5/5r3/3pp4/2Cp5/2c1K4"
+  },
+  {
+    "name": "Thế cờ 31",
+    "board": "3k3P1/P3PPP2/3r5/8R/8C/9/3p5/5p3/4pp3/3K2p2"
+  },
+  {
+    "name": "Thế cờ 32",
+    "board": "3a3P1/4nk3/4Pa3/9/7r1/9/9/4K4/4A4/8C"
+  },
+  {
+    "name": "Thế cờ 33",
+    "board": "9/4PP3/4bk3/3R5/9/9/2CC5/2ccpr3/9/4K4"
+  },
+  {
+    "name": "Thế cờ 34",
+    "board": "9/4P4/4bk3/3R5/9/2CC5/2cp5/4cr3/9/4K4"
+  },
+  {
+    "name": "Thế cờ 35",
+    "board": "2n6/3PPPN2/3kb4/9/5R3/5C3/6C2/3rcnc2/3p5/5K3"
+  },
+  {
+    "name": "Thế cờ 36",
+    "board": "3k5/9/9/9/9/3C5/9/4K4/7c1/8C"
+  },
+  {
+    "name": "Thế cờ 37",
+    "board": "1P1k2r2/4a1r2/3aP1Rn1/C8/4p4/6B2/9/3K1R3/4pC3/1p2n4"
+  },
+  {
+    "name": "Thế cờ 38",
+    "board": "4r4/2P3R2/3k5/9/9/9/9/9/5K3/9"
+  },
+  {
+    "name": "Thế cờ 39",
+    "board": "9/4P4/4bk3/3R5/9/9/2CC5/3ncr3/1p3p3/2cK5"
+  },
+  {
+    "name": "Thế cờ 40",
+    "board": "4N4/3PPP3/3kb4/5R3/9/9/5CC2/3rpcc2/3p5/5K3"
+  },
+  {
+    "name": "Thế cờ 41",
+    "board": "2n1NPb2/4P4/5kC2/4R4/9/5C3/9/3rcpc2/9/5K3"
+  },
+  {
+    "name": "Thế cờ 42",
+    "board": "5rr2/4R1CNc/5k3/9/6n2/9/9/9/1p1K5/9"
+  },
+  {
+    "name": "Thế cờ 43",
+    "board": "2r6/nNC1R4/c2k5/9/9/9/9/4K4/9/8p"
+  },
+  {
+    "name": "Thế cờ 44",
+    "board": "4k4/4c4/3P1P3/5R3/9/9/9/9/6r2/5K3"
+  },
+  {
+    "name": "Thế cờ 45",
+    "board": "2r6/cNC1R4/r2k5/9/9/9/9/8p/4K4/9"
+  },
+  {
+    "name": "Thế cờ 46",
+    "board": "9/3k5/9/9/9/9/9/4KC3/7c1/8C"
+  },
+  {
+    "name": "Thế cờ 47",
+    "board": "9/3k5/9/9/9/3C5/c8/9/4K4/4C4"
+  },
+  {
+    "name": "Thế cờ 48",
+    "board": "2r6/cPC1R4/3k5/9/9/9/9/4N4/4K4/9"
+  },
+  {
+    "name": "Thế cờ 49",
+    "board": "n4k3/3PP4/2R1c4/9/9/9/9/9/3K1r3/C8"
+  },
+  {
+    "name": "Thế cờ 50",
+    "board": "3r1k3/4n1R2/4b2R1/9/5P3/9/9/9/4r4/5K3"
+  },
+  {
+    "name": "Thế cờ 51",
+    "board": "5k3/3PR4/4ra3/5R3/4r4/9/9/9/5K3/9"
+  },
+  {
+    "name": "Thế cờ 52",
+    "board": "9/3PP4/3kb4/5R3/5R3/5C3/6C2/5p3/2prr4/5Kc2"
+  },
+  {
+    "name": "Thế cờ 53",
+    "board": "6r2/4R1CPc/3k5/9/9/9/9/9/4K4/9"
+  },
+  {
+    "name": "xanh9",
+    "board": "1r1ck4/3P5/3Pb2PR/9/8P/2P6/9/8B/3p5/4K4"
+  },
+  {
+    "name": "Thế cờ 55",
+    "board": "5kb2/3PP4/3P1P3/9/9/9/9/9/9/4K2r1"
+  },
+  {
+    "name": "Thế cờ 56",
+    "board": "3aka3/4n4/4c1r2/4C4/4C2P1/9/9/9/3K5/9"
+  },
+  {
+    "name": "Thế cờ 57",
+    "board": "9/4P1N2/3kb4/3r5/5R3/9/5CC2/4pnc2/2p6/c4K3"
+  },
+  {
+    "name": "Thế cờ 58",
+    "board": "2r6/cNC1R4/3k5/1c7/9/9/9/9/4K4/8p"
+  },
+  {
+    "name": "ktc",
+    "board": "n4k3/3PP4/3Rcr3/9/9/9/9/9/3K5/9"
+  },
+  {
+    "name": "Thế cờ 60",
+    "board": "9/5k3/9/9/9/9/9/3CK4/2c6/1C7"
+  },
+  {
+    "name": "Thế cờ 61",
+    "board": "9/5k3/9/9/5C3/9/9/4K4/2c6/C8"
+  },
+  {
+    "name": "Thế cờ 62",
+    "board": "3k1n3/4P4/9/9/8R/8R/P2r3CC/5p3/4p4/2B2K3"
+  },
+  {
+    "name": "Thế cờ 63",
+    "board": "5k3/4Pc3/3P5/9/9/9/9/5K3/4p4/3pn4"
+  },
+  {
+    "name": "Thế cờ 64",
+    "board": "3P5/4P4/P2kb4/5R3/5C3/9/6C2/3rncc2/3p1K3/9"
+  },
+  {
+    "name": "web",
+    "board": "n4k3/3PP4/3Rcr3/9/9/9/9/9/4K4/9"
+  },
+  {
+    "name": "pika",
+    "board": "5k3/4Pc3/3P5/9/9/9/9/5K3/4p4/3pn4"
+  },
+  {
+    "name": "Thế cờ 67",
+    "board": "4N4/4P4/3kb4/4R4/9/9/5CC2/3rcpc2/9/4K4"
+  },
+  {
+    "name": "Thế cờ 68",
+    "board": "4N4/3PP4/3kb4/4R4/9/9/5CC2/3rpcc2/9/5K3"
+  },
+  {
+    "name": "Thế cờ 69",
+    "board": "2nNP4/5P3/3kb4/9/5R3/9/5CC2/3rcnc2/3p5/5K3"
+  },
+  {
+    "name": "15aaaa",
+    "board": "5k3/4Pc3/3P5/9/9/9/9/5K3/4p4/3pn4"
+  },
+  {
+    "name": "Thế cờ 71",
+    "board": "9/4PP3/5k3/9/5c2r/5R3/9/9/9/4K4"
+  },
+  {
+    "name": "Thế cờ 72",
+    "board": "9/5k3/9/9/5C3/9/9/4K4/2c6/C8"
+  },
+  {
+    "name": "Thế cờ 73",
+    "board": "2P1ka3/4n2P1/9/9/2p6/9/9/B7C/8r/4KAB2"
+  },
+  {
+    "name": "Thế cờ 74",
+    "board": "2P1ka3/4n2P1/9/9/2p6/9/9/B7C/8r/4KAB2"
+  },
+  {
+    "name": "1111",
+    "board": "9/5k3/9/9/5C3/9/9/4K4/2c6/C8"
+  }
+]
