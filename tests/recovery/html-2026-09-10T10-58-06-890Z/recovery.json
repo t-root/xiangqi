@@ -1,0 +1,11 @@
+{
+  "target": "C:\\Users\\T-Root\\Documents\\xiangqi\\xiangqi-analyzer.html",
+  "source": "dist/XiangqiAnalyzer.exe",
+  "packageHtmlSha256": "411ce52a4d03d03db59f7201c37b59c19d0df7eac2d7393c8e7cd819d5a07f2c",
+  "patchTimestamp": "2026-09-10T07:50:59.684Z",
+  "patchId": "exec-40eb6f9d-5365-46dd-ba00-f44037d6f0a8",
+  "previousSha256": "fecbcec3b0f1242dd19ab614d1990fed85315e778650386a37a8511336994ae5",
+  "restoredSha256": "4b13dd6a4ad4e149a088cc6d1d6bddfd5c437dc9c9a489f75faa3ad7dce4da51",
+  "restoredBytes": 1152499,
+  "verification": "Byte-exact match to packaged HTML plus recorded final patch; independently matched replay of all 8 recorded HTML changes."
+}

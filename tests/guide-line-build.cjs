@@ -6,7 +6,7 @@ for(const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi))for(const 
  if(n.type==='FunctionDeclaration')functions[n.id.name]=m[1].slice(n.start,n.end);
 function setup(end,budget){
  const updates=[],calls=[];
- const c=vm.createContext({board:0,currentPlayer:'red',boardKey:String,guideAttacker:'red',guideLineToken:1,guideActive:true,gameOver:false,
+ const c=vm.createContext({board:0,currentPlayer:'red',boardKey:String,guideAttacker:'red',guideSide:'red',guideBestMove:null,guideLineToken:1,guideActive:true,gameOver:false,
  guideEngine:'pikafish',guideLineEngine:'pikafish',guideLineRunning:false,guideLineWaiting:false,guideLineKey:'root',guideLineTimer:null,
  linePreviewGameSnapshot:null,lineViewIndex:0,lineViewSteps:[],worstLineToken:0,BRAIN_LABELS:{},clearTimeout,
  stopBrainSearch(){},stopBackgroundCacheForLive(){throw Error('Must not clear cache');},scheduleGuideNextPlyPrefetch(){throw Error('Must not rebuild cache display');},
@@ -21,7 +21,7 @@ function setup(end,budget){
  return {c,updates,calls,root:{board:0,side:'red',budgets:{red:budget,black:budget}}};
 }
 (async()=>{
- const reuse=vm.createContext({board:0,currentPlayer:'red',guideSide:'red',guideBestMove:null,
+ const reuse=vm.createContext({board:0,currentPlayer:'red',guideSide:'red',guideBestMove:null,pendingCompositeGuideChoice:null,
   guideActive:true,gameOver:false,linePreviewGameSnapshot:null,guideLineKey:'',guideLineToken:0,
   guideLineRunning:false,guideLineWaiting:false,guideLineTimer:null,guideLineEngine:'pikafish',
   guideThinking:false,analysisRunning:false,aiThinking:false,assistThinking:false,exhaustiveCacheRunning:false,
@@ -53,7 +53,7 @@ function setup(end,budget){
  reuse.syncGuideLineToCurrentPosition();reuse.scheduleCurrentGuideLine();reuse.tick();
  assert.equal(reuse.builds,2,'An exhausted line must allow another search');
  console.log('PASS reuse analysis root and both sides of PV; rebuild on deviation or exhausted line');
- const scheduled=vm.createContext({guideActive:true,gameOver:false,guideLineRunning:false,
+ const scheduled=vm.createContext({guideActive:true,gameOver:false,guideLineRunning:false,pendingCompositeGuideChoice:null,
   guideThinking:false,analysisRunning:false,aiThinking:false,assistThinking:false,exhaustiveCacheRunning:false,
   guideAttacker:'red',guideLineKey:'',guideLineToken:1,guidePrefetchRunning:true,guidePikaCacheActive:1,
   linePreviewGameSnapshot:null,currentGuideLineEngine:()=> 'pikafish',guideMovesRemaining:()=>2,

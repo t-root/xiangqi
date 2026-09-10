@@ -1,5 +1,5 @@
-node_modules/
-nen_giai_nen_2_chieu.bat
+node_modules/ 
 xiangqi-analyzer.html
 tiktok_auto_reply_extension/
 dist/XiangqiAnalyzer.exe
+zip_and_push.bat
