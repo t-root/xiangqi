@@ -12,7 +12,68 @@ window.addEventListener('DOMContentLoaded', async () => {
   if(engine.startsWith('bruteforce')) {
    scheduleCurrentGuideLine();refreshLineViewRow();
    if(guideLineTimer || guideLineRunning || document.getElementById('guideLineControls').style.display!=='none')throw Error('BF line should be disabled');
-   report.textContent='PASS '+mode+' line feature disabled';return;
+   if(new URLSearchParams(location.search).has('initial')) {
+    const draw=new URLSearchParams(location.search).has('draw');
+    if(draw)board=parseXiangqiFen('3k5/9/9/9/9/9/9/9/9/5K3 w - - 0 1').board;
+    guideActive=false;gameMode=false;gameUsesAnalysisRule=false;
+    document.getElementById('modeMoves').checked=true;document.getElementById('modeTime').checked=false;
+    document.getElementById('movesLimit').value=draw?'2':'4';
+    document.getElementById('firstPlayer').value='red';document.getElementById('engineBrainSelect').value=mode;
+    let initialBuilds=0;
+    const proof=refineWorstCaseLine,drawLine=buildDrawPreviewLineBruteForce;
+    refineWorstCaseLine=function(...args){initialBuilds++;return proof(...args);};
+    buildDrawPreviewLineBruteForce=function(...args){initialBuilds++;return drawLine(...args);};
+    await startAnalysisBruteForce(engine==='bruteforceweb');
+    const deadline=Date.now()+45000;
+    while(analysisRunning || lineViewProofState==='pending') {
+     if(Date.now()>deadline)throw Error('Initial line timed out');
+     await new Promise(r=>setTimeout(r,50));
+    }
+    if(initialBuilds!==1 || lineViewProofState==='unavailable' || lineViewSteps.length<3)throw Error('Initial BF line missing');
+    const initialLine=lineViewSteps,plies=initialLine.length-1;
+    if(draw && plies!==4)throw Error('Initial draw line must cover both budgets');
+    if(!draw && generateLegalMoves(initialLine.at(-1).board,'black').length)throw Error('Initial mate line must finish at mate');
+    startGuideSession(draw?'drawproof':'win','red');
+    cancelGuidePrefetch();
+    for(const step of initialLine.slice(1,3)) {
+     const move=generateLegalMoves(board,currentPlayer).find(m=>moveToUci(m)===moveToUci(step.lastMove));
+     if(!move)throw Error('Initial line cannot be followed');
+     executeMove(move);cancelGuidePrefetch();
+     if(lineViewSteps!==initialLine || initialBuilds!==1 || guideLineRunning)throw Error('BF rebuilt line after a move');
+    }
+    report.textContent='PASS '+mode+': initial '+(draw?'draw':'mate')+' line '+plies+' plies; two played moves preserve line; no rebuild';
+    hideGuide();return;
+   }
+   const savedLine=[{board:cloneBoard(board),desc:'saved root'},{board:cloneBoard(board),desc:'saved continuation'}];
+   lineViewSteps=savedLine;lineViewIndex=1;lineViewBuildStatus='saved';lineViewProofState='';
+   const screenshotCase=new URLSearchParams(location.search).has('screenshot');
+   board=parseXiangqiFen(screenshotCase
+    ? '3k5/7N1/3c5/4R4/8R/1N7/9/5K3/1C7/9 b - - 0 1'
+    : '3k5/9/9/9/9/9/9/9/9/5K3 b - - 0 1').board;
+   currentPlayer='black';guideSide='black';guideMode='defense';guideMovesTarget=2;guideMaxMoves=2;
+   gameMode=true;gameUsesAnalysisRule=true;guideOfferLocked=false;ktcBudgetOn=false;
+   applyAnalysisCheckStreakRule('red');
+   installEngineHistory(buildStandaloneEnginePositionState(board,currentPlayer));
+   const root=buildCurrentEnginePositionState(guideCurrentCacheBudgets());
+   const job={state:root,budgets:root.budgets,move:generateLegalMoves(board,currentPlayer)[0]};
+   const calls=[],go=runBruteForceGo;
+   runBruteForceGo=async function(ws,cmd,...args){calls.push(cmd);const result=await go(ws,cmd,...args);
+    report.dataset.trace=JSON.stringify({calls,result});return result;};
+   const done=await prefetchBranchBruteForce(job,engine==='bruteforceweb',guidePrefetchToken);
+   if(!done || job.engineJobs[engine].status!=='PROVEN_HOLD')throw Error('Missing cached hold proof');
+   calls.length=0;
+   await refreshDefenseGuideMoveBruteForce(0,engine==='bruteforceweb');
+   if(!guideBestMove)throw Error('Completed proof did not produce a guide move');
+   if(calls.some(cmd=>cmd==='go budget 2'))throw Error('Repeated already-cached root proof');
+   if(calls.some(cmd=>cmd!=='go budgets red 2 black 1'))throw Error('Child proof must consume the defender move');
+   if(lineViewSteps!==savedLine || lineViewIndex!==1 || lineViewBuildStatus!=='saved')throw Error('BF guide changed saved line');
+   const move=moveToUci(guideBestMove);
+   guidePlan={};guideProofPlan={};guideBestMove=null;calls.length=0;
+   await refreshDefenseGuideMoveBruteForce(0,engine==='bruteforceweb');
+   if(!guideBestMove || moveToUci(guideBestMove)!==move || calls.length)throw Error('Missed engine-local cached move');
+   if(lineViewSteps!==savedLine || lineViewIndex!==1)throw Error('Cache hit changed saved line');
+   report.textContent='PASS '+mode+': cached proof produces '+move+'; engine-local cache reused without search; guide preserves line';
+   cancelCurrentGuideLine();cancelGuidePrefetch();return;
   }
   getAnalysisTimeLimitMs=()=>engine.startsWith('bruteforce') ? 15000 : 1500;
   const traces=[],query=querySingleEngineGuideMove;

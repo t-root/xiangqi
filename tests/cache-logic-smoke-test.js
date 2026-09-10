@@ -32,10 +32,29 @@ const context = {
     exhaustiveCacheRunning: false, exhaustiveCacheCompleted: false,
     exhaustiveGuidePlan: {}, GUIDE_PREFETCH_CACHE_LIMIT: 100
 };
+// Regression fixture for the composite read path: the promoted/shared map may be
+// absent after a history replay even though Pikafish's own verified entry is still
+// present. The UI must use that component entry instead of starting both engines again.
+const cachedMove = { from: { row: 0, col: 0 }, to: { row: 1, col: 0 } };
+Object.assign(context, {
+    guidePlan: {}, guidePlanByEngine: { pikafish: { pikafish: {
+        ...cachedMove, movesLeft: 2, role: 'defense', exactMate: true,
+        horizonSafe: true, sourceBrain: 'pikafish'
+    } }, bruteforce: {} },
+    guidePlanKey: () => 'shared', guidePlanKeyForBrain: brain => brain,
+    guideCurrentBrain: () => 'nativecombo',
+    compositeBrains: brain => brain === 'nativecombo' ? ['pikafish', 'bruteforce'] : [brain],
+    guideCurrentCacheBudgets: () => ({ red: 2, black: 2 }),
+    exhaustivePlanRecallAt: () => null,
+    recallAnalysisSeedMove: () => null,
+    liveCheckStreak: { red: 0, black: 0 }, guideMode: 'win', guideAttacker: 'red', guideSide: 'black',
+    board: [], currentPlayer: 'black',
+    generateLegalMoves: () => [cachedMove]
+});
 vm.createContext(context);
 for (const name of [
     'pikafishHorizonVerdict', 'cacheAttemptTerminalFailure', 'cacheAttemptTime', 'cacheBudgetsRemaining', 'cacheAttemptIsCurrent', 'cacheAttemptFinished',
-    'cacheEngineRetryText', 'deferCacheAttempt',
+    'cacheEngineRetryText', 'deferCacheAttempt', 'guidePlanRecallAt', 'guidePlanRecall',
     'bruteForceHorizonVerdict', 'guideCacheProofStrength', 'rememberPrefetchedGuideMove'
 ]) vm.runInContext(`${declaration(name)}; this.${name}=${name};`, context);
 
@@ -61,10 +80,16 @@ context.rememberPrefetchedGuideMove(state, 'red', move, { red: 4, black: 4 },
 assert(context.guidePlan.shared.sourceBrain === 'bruteforceweb',
     'Pika exact mate overwrote stronger BF proof');
 delete context.guidePlan.shared;
+const componentHit = context.guidePlanRecall([], 'black');
+assert(componentHit && componentHit.sourceBrain === 'pikafish' && componentHit.move,
+    'composite guide ignored a valid component cache entry');
+context.guidePlan.shared = undefined;
 context.guideProvenFailurePlan.shared = true;
 context.rememberPrefetchedGuideMove(state, 'red', move, { red: 4, black: 4 },
     'hold', 4, true, true, 'pikafishweb', 'READY_DEFENSE');
 assert(!context.guidePlan.shared, 'late Pika result survived BF PROVEN_FAIL tombstone');
+assert(!context.guidePlanRecall([], 'black'),
+    'component cache bypassed a stronger Brute-force failure tombstone');
 assert(context.cacheBudgetsRemaining({ red: 0, black: 0 }) === 0, 'zero budget must remain zero');
 
 const early = {

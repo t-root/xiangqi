@@ -96,7 +96,15 @@ Nguồn các binary:
 Với máy chủ `serve-composite-test.cjs`, mở `/__combo-test?line=1&engine=...`, thay engine bằng
 `pikafish`, `pikafishweb`, `nativecombo`, hoặc `webcombo`.
 Bài thử dùng thế mate 4, kiểm tra tuyến kết thúc trong mốc, bàn thật không đổi và bảng cache giữ nguyên.
-Phối hợp chỉ gọi Pika để dựng tuyến. `bruteforce`/`bruteforceweb` kiểm tra tính năng này đã tắt.
+Phối hợp chỉ gọi Pika để dựng tuyến. `bruteforce`/`bruteforceweb` kiểm tra dựng lại sau mỗi nước đã tắt,
+cache proof được dùng để lấy một nước thủ, kho riêng engine được đọc khi kho chung thiếu,
+và line giữ nguyên khi hướng dẫn. Thêm `&initial=1` để kiểm tra BF vẫn dựng line ban đầu
+sau phân tích thắng, rồi chơi hai nước không dựng lại. Thêm tiếp `&draw=1` để kiểm tra
+line ban đầu của kết quả hòa. Chạy cả hai bản `bruteforce` và `bruteforceweb`.
+Thêm `&screenshot=1` với hai chế độ BF để kiểm tra thế cờ từ ảnh lỗi ngày 10/09/2026:
+ngân sách gốc 2/2, sau nước Đen phải hỏi BF 2/1, có nước hướng dẫn và lần sau dùng cache ngay.
+`node tests/bruteforce-proof-line.cjs` cũng kiểm tra ngân sách nút con của cả hai bên,
+ngoại lệ ktc, giữ lịch sử và hủy lượt dò.
 Riêng Pika, fixture chỉ giữ một nước của mỗi PV để buộc chạy nhánh dò nối tiếp.
 Thêm `&early-preview=1` để bấm xem nước đầu trước khi tuyến được dựng, ngay trong Hướng dẫn khi chưa mở ván chơi.
 Thêm `&defense=1` để kiểm tra lượt Đen sau Pháo Đỏ `a0a4`, mốc còn 3 nước; tuyến có thể hết mốc mà chưa mate.
