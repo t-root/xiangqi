@@ -1,26 +1,48 @@
 const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
 const parser = require('../engine/node_modules/@babel/parser');
 const html = fs.readFileSync(require('node:path').join(__dirname, '../xiangqi-analyzer.html'), 'utf8');
-let source, finishSource, defenseSource, startGuideSource, holdingSource;
+let source, refineSource, refineWebSource, finishSource, defenseSource, startGuideSource, offerGuideSource, holdingSource;
 for (const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) {
   for (const n of parser.parse(m[1]).program.body) {
     if (n.type === 'FunctionDeclaration' && n.id.name === 'refineWorstCaseLineBruteForce') source = m[1].slice(n.start, n.end);
+    if (n.type === 'FunctionDeclaration' && n.id.name === 'refineWorstCaseLine') refineSource = m[1].slice(n.start, n.end);
+    if (n.type === 'FunctionDeclaration' && n.id.name === 'refineWorstCaseLineEngineWeb') refineWebSource = m[1].slice(n.start, n.end);
     if (n.type === 'FunctionDeclaration' && n.id.name === 'finishAnalysis') finishSource = m[1].slice(n.start, n.end);
     if (n.type === 'FunctionDeclaration' && n.id.name === 'refreshDefenseGuideMoveBruteForce') defenseSource = m[1].slice(n.start, n.end);
     if (n.type === 'FunctionDeclaration' && n.id.name === 'startGuideSession') startGuideSource = m[1].slice(n.start, n.end);
+    if (n.type === 'FunctionDeclaration' && n.id.name === 'offerWinningGuide') offerGuideSource = m[1].slice(n.start, n.end);
     if (n.type === 'FunctionDeclaration' && n.id.name === 'findBruteForceHoldingMove') holdingSource = m[1].slice(n.start, n.end);
   }
 }
 assert.ok(source, 'missing refineWorstCaseLineBruteForce fixture');
+assert.ok(refineSource, 'missing refineWorstCaseLine fixture');
+assert.ok(refineWebSource, 'missing refineWorstCaseLineEngineWeb fixture');
 assert.ok(finishSource, 'missing finishAnalysis fixture');
 assert.ok(defenseSource, 'missing refreshDefenseGuideMoveBruteForce fixture');
 assert.ok(startGuideSource, 'missing startGuideSession fixture');
+assert.ok(offerGuideSource, 'missing offerWinningGuide fixture');
 assert.equal(finishSource.includes('refineWorstCaseLine('), true,
   'BF analysis must build its initial proof line');
+assert.ok(finishSource.indexOf('offerWinningGuide(') < finishSource.indexOf('refineWorstCaseLine('),
+  'the winning-guide choices must be offered before the background proof line starts');
 assert.match(finishSource, /let line = \(msg.line/,
   'standalone BF analysis must retain its initial PV');
 assert.match(startGuideSource, /canStartUnseededBruteForceGuide/,
   'standalone BF guide must be allowed to query the engine without a cached first move');
+assert.equal(offerGuideSource.includes('initialBfLinePending'), false,
+  'the winning-guide choices must not wait for the background proof line');
+assert.equal(offerGuideSource.includes('Đang hoàn thiện line chứng minh'), false,
+  'proof-line progress belongs only in the line viewer');
+assert.match(offerGuideSource, /showGuideBuildOptions\('win'/,
+  'the attack-side choice must be available immediately after a win');
+assert.match(offerGuideSource, /showGuideBuildOptions\('defense'/,
+  'the defense-side choice must be available immediately after a win');
+assert.equal(startGuideSource.includes("lineViewProofState === 'pending'"), false,
+  'starting a BF guide must not be blocked by a pending proof line');
+assert.equal(refineSource.includes('offerWinningGuide('), false,
+  'finishing the BF proof line must not rebuild an unselected guide offer');
+assert.equal(refineWebSource.includes('offerWinningGuide('), false,
+  'finishing the Web proof line must not rebuild an unselected guide offer');
 assert.equal(defenseSource.includes('buildLineView('), false,
   'Finding one BF holding move must not reconstruct the preview line');
 assert.equal(finishSource.includes('buildDrawPreviewLineBruteForce('), true,
