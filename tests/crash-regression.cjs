@@ -149,6 +149,14 @@ function bridgeFixture() {
     const f=bridgeFixture(),old=f.connect();f.connect();const c=f.children[0],n=c.writes.length;
     old.emit('message',Buffer.from('go budget 60'));assert.equal(c.writes.length,n);
   });
+  await test('native clients report a lost session and schedule reconnect', () => {
+    const html=fs.readFileSync(path.join(__dirname,'../xiangqi-analyzer.html'),'utf8');
+    for (const [engine, schedule] of [['Pikafish','schedulePikafishReconnect'],['Brute-force','scheduleBruteForceReconnect']]) {
+      assert.match(html,new RegExp(`function ${schedule}\\(\\)`));
+      assert.match(html,new RegExp(`Mất phiên ${engine}[^']*`));
+      assert.match(html,new RegExp(`${schedule}\\(\\);`));
+    }
+  });
   await test('bridge waits for bestmove before changing engine state', () => {
     const f=bridgeFixture(),ws=f.connect(),c=f.children[0];
     ws.emit('message',Buffer.from('go infinite\nposition fen test\nisready\ngo depth 2'));

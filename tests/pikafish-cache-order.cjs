@@ -4,13 +4,19 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const parser = require('../engine/node_modules/@babel/parser');
 const html = fs.readFileSync(path.join(__dirname, '../xiangqi-analyzer.html'), 'utf8');
-const context = vm.createContext({});
+const context = vm.createContext({ MAX_ENGINE_MOVETIME_MS: 2147483647 });
 for (const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) {
     for (const node of parser.parse(match[1]).program.body) {
-        if (node.type === 'FunctionDeclaration' && ['takeFullCacheJob', 'cacheJobNextAttempt', 'compositeBrains', 'cacheAttemptFinished', 'cacheAttemptTerminalFailure', 'prefetchBranchComposite', 'runIndependentFullCache'].includes(node.id.name))
+        if (node.type === 'FunctionDeclaration' && ['takeFullCacheJob', 'cacheJobNextAttempt', 'cachePrefetchDeadlineMs', 'compositeBrains', 'cacheAttemptFinished', 'cacheAttemptTerminalFailure', 'prefetchBranchComposite', 'runIndependentFullCache'].includes(node.id.name))
             vm.runInContext(match[1].slice(node.start, node.end), context);
     }
 }
+context.guideAttacker = 'red';
+context.generateLegalMoves = () => [{}, {}];
+assert.equal(context.cachePrefetchDeadlineMs('bruteforce', { state: { board: [], side: 'black' } }, 100), 300,
+    'BF defense cache must reserve one probe window per legal defense after the root proof');
+assert.equal(context.cachePrefetchDeadlineMs('pikafish', { state: { board: [], side: 'black' } }, 100), 100,
+    'Pikafish already returns a move and must retain its normal watchdog window');
 for (const brain of ['pikafish', 'pikafishweb', 'bruteforce', 'bruteforceweb', 'nativecombo', 'webcombo']) {
     const make = (id, attempt = 1) => ({ id, engineJobs: Object.fromEntries(context.compositeBrains(brain).map(type => [type, { attempt }])) });
     const queue = [make('A'), make('B'), make('C')], retry = [], order = [];

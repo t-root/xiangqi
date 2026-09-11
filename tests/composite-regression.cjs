@@ -24,7 +24,7 @@ async function test(name,fn){await fn();checks++;console.log('PASS '+name);}
   await test(combo+': cache queues advance independently, retry alone and cancel without dispatching more',async()=>{
    const calls=[], pending=new Map(); let alive=true;
    const jobs=[1,2,3].map(index=>({index,state:{board:[],side:'red'},budgets:{},engineJobs:{}}));
-   const c=load({guideAwaitedCacheKey:'',setTimeout,
+   const c=load({guideAwaitedCacheKey:'',setTimeout,MAX_ENGINE_MOVETIME_MS:2147483647,
     cacheAttemptFinished:j=>j?.status==='READY',cacheAttemptTerminalFailure:j=>j?.status==='PROVEN_FAIL',
     captureCacheRunIds:()=>({}),cacheInitialTimeMsForEngine:()=>10,
     withCompositeEngineDeadline:(_,p)=>p,generateLegalMoves:()=>[{}],hasVerifiedGuideHorizonCache:()=>false,
@@ -34,7 +34,7 @@ async function test(name,fn){await fn();checks++;console.log('PASS '+name);}
      job.engineJobs[brain]={status:'RUNNING'};
      return d.promise.then(value=>{job.engineJobs[brain].status=value?'READY':'INCOMPLETE';return value;});
     }
-   },['compositeBrains','cacheJobNextAttempt','takeFullCacheJob','prefetchIndependentCacheQueues']);
+   },['compositeBrains','cachePrefetchDeadlineMs','cacheJobNextAttempt','takeFullCacheJob','prefetchIndependentCacheQueues']);
    const [fast,slow]=c.compositeBrains(combo);
    const run=c.prefetchIndependentCacheQueues(jobs,[fast,slow],1,()=>alive,()=>{});
    assert.deepEqual(calls,[`${fast}:1`,`${slow}:1`]);

@@ -167,11 +167,13 @@ for (const engineType of ['pikafish', 'pikafishweb']) {
 console.log('Pika early completion and stale run checks: ok');
 
 for (const score of [{scoreType:'cp',scoreVal:100},{scoreType:'mate',scoreVal:4},{scoreType:'mate',scoreVal:-2}]) {
- const verdict=context.pikafishHorizonVerdict('red','red',3,{...score,depth:6},6);
+ const verdict=context.pikafishHorizonVerdict('red','red',3,{...score,depth:6});
  assert(verdict.status==='HORIZON_MISS' && verdict.terminal, 'No mate within remaining horizon must stop');
- assert(context.pikafishHorizonVerdict('red','red',3,{...score,depth:5},6).status==='INCOMPLETE', 'Below horizon must retry');
+ assert(context.pikafishHorizonVerdict('red','red',3,{...score,depth:1}).status==='HORIZON_MISS',
+     'Search depth must not gate a completed time slice');
 }
-assert(context.pikafishHorizonVerdict('red','red',3,{scoreType:'mate',scoreVal:3,depth:6},6).ready, 'Mate exactly within horizon must succeed');
+assert(context.pikafishHorizonVerdict('red','red',3,{scoreType:'mate',scoreVal:3,depth:1}).ready,
+    'Mate exactly within horizon must succeed at any reported depth');
 const limited={status:'HORIZON_MISS',result:{horizonReached:true,verifiedHorizon:false}};
 assert(context.cacheAttemptTerminalFailure(limited),'Horizon miss must leave retry queue');
 assert(!context.cacheAttemptFinished(limited),'Horizon miss must not become verified proof');

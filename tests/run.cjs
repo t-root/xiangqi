@@ -11,6 +11,7 @@ suite.push('guide-line-build.cjs');
 suite.push('bruteforce-proof-line.cjs');
 suite.push('history-regression.cjs');
 suite.push('analysis-engine-lines.cjs');
+suite.push('analysis-progress-visibility.cjs');
 suite.push('web-native-display-parity.cjs');
 for(const file of suite){
     console.log('\n>>> '+file);

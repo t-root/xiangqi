@@ -1,7 +1,7 @@
 const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
 const parser = require('../engine/node_modules/@babel/parser');
 const html = fs.readFileSync(require('node:path').join(__dirname, '../xiangqi-analyzer.html'), 'utf8');
-let source, refineSource, refineWebSource, finishSource, defenseSource, startGuideSource, offerGuideSource, holdingSource;
+let source, refineSource, refineWebSource, finishSource, defenseSource, startGuideSource, offerGuideSource, holdingSource, prefetchSource;
 for (const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) {
   for (const n of parser.parse(m[1]).program.body) {
     if (n.type === 'FunctionDeclaration' && n.id.name === 'refineWorstCaseLineBruteForce') source = m[1].slice(n.start, n.end);
@@ -12,6 +12,7 @@ for (const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) {
     if (n.type === 'FunctionDeclaration' && n.id.name === 'startGuideSession') startGuideSource = m[1].slice(n.start, n.end);
     if (n.type === 'FunctionDeclaration' && n.id.name === 'offerWinningGuide') offerGuideSource = m[1].slice(n.start, n.end);
     if (n.type === 'FunctionDeclaration' && n.id.name === 'findBruteForceHoldingMove') holdingSource = m[1].slice(n.start, n.end);
+    if (n.type === 'FunctionDeclaration' && n.id.name === 'prefetchBranchBruteForce') prefetchSource = m[1].slice(n.start, n.end);
   }
 }
 assert.ok(source, 'missing refineWorstCaseLineBruteForce fixture');
@@ -21,6 +22,7 @@ assert.ok(finishSource, 'missing finishAnalysis fixture');
 assert.ok(defenseSource, 'missing refreshDefenseGuideMoveBruteForce fixture');
 assert.ok(startGuideSource, 'missing startGuideSession fixture');
 assert.ok(offerGuideSource, 'missing offerWinningGuide fixture');
+assert.ok(prefetchSource, 'missing prefetchBranchBruteForce fixture');
 assert.equal(finishSource.includes('refineWorstCaseLine('), true,
   'BF analysis must build its initial proof line');
 assert.ok(finishSource.indexOf('offerWinningGuide(') < finishSource.indexOf('refineWorstCaseLine('),
@@ -45,6 +47,12 @@ assert.equal(refineWebSource.includes('offerWinningGuide('), false,
   'finishing the Web proof line must not rebuild an unselected guide offer');
 assert.equal(defenseSource.includes('buildLineView('), false,
   'Finding one BF holding move must not reconstruct the preview line');
+assert.match(prefetchSource, /findBruteForceHoldingMove\(/,
+  'A proven BF hold with bestmove none must build one cached defense move');
+assert.match(prefetchSource, /needsDefenseMove/,
+  'An unfinished cached defense probe must retain its completed root proof for retry');
+assert.equal(prefetchSource.includes('needsLiveMove'), false,
+  'Background cache must not defer a proven hold move until the player enters the branch');
 assert.equal(finishSource.includes('buildDrawPreviewLineBruteForce('), true,
   'BF draw analysis must build its initial preview line');
 async function run(end, budget, skip = false) {

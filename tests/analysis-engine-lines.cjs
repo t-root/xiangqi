@@ -10,6 +10,7 @@ for (const combo of ['nativecombo', 'webcombo']) {
   Object.assign(c, {lastAnalysisPositionState:root,lastAnalysisSnapshot:root.board,lastAnalysisFirstPlayer:'red',
     lastAnalysisEngineLines:{},lastAnalysisGuideSeed:null,guideActive:true,guideMode:'win',guideSide:'red',
     guideAttacker:'red',guideEngine:combo,guideMovesTarget:4,guideMaxMoves:4,guideMovesUsed:0,
+    guideCompositeLineChosen:true,
     guideToken:0,guideOfferLocked:false,BRAIN_IDS:[combo,...brains],
     document:{getElementById:()=>({})},renderAnalysisEngineLines(){},houseRuleLossReason:()=>null,
     syncCheckStreakRestrictedForGame(){},prioritizeFullCacheCurrentBranch(){},fullCacheConstrained:()=>false,
@@ -42,5 +43,8 @@ for (const combo of ['nativecombo', 'webcombo']) {
   }
   assert.notEqual(c.moveToUci(c.lastAnalysisEngineLines[brains[0]].moves[0]),
     c.moveToUci(c.lastAnalysisEngineLines[brains[1]].moves[0]));
-  console.log('PASS '+combo+': distinct original lines; attack/defense reuse without queries; history and deviation fallback');
+  c.board=c.cloneBoard(root.board);c.currentPlayer='red';c.installEngineHistory(root);
+  c.guideSide='red';c.guideMode='win';c.guideCompositeLineChosen=false;
+  c.refreshGuide();assert.equal(c.queries,1,'The root of a composite guide must ask the user to choose an engine move');
+  console.log('PASS '+combo+': distinct original lines; root asks for an engine move; attack/defense reuse without queries; history and deviation fallback');
 }
