@@ -4,6 +4,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const {EventEmitter} = require('node:events');
+const parser = require('../engine/node_modules/@babel/parser');
 const engineDir = path.resolve(__dirname, '../engine');
 const executable = path.resolve(process.argv[2] || path.join(engineDir, 'bruteforce-src/src/bruteforce.exe'));
 const fen = '9/5k3/9/9/5C3/9/9/4K4/2c6/C8 w - - 0 1';
@@ -156,6 +157,34 @@ function bridgeFixture() {
       assert.match(html,new RegExp(`Mất phiên ${engine}[^']*`));
       assert.match(html,new RegExp(`${schedule}\\(\\);`));
     }
+    assert.match(html,/function scheduleNativeAnalysisRestart\(engine, boardSnapshot, resultEl\)/);
+    assert.match(html,/function stopNativeAnalysisSearchForRestart\(engine\)/);
+    assert.match(html,/stopNativeAnalysisSearchForRestart\(engine\)/);
+    assert.match(html,/composite === 'nativecombo'.*scheduleNativeAnalysisRestart/s);
+  });
+  await test('native composite reconnect restarts both engines from the original board', async () => {
+    const html=fs.readFileSync(path.join(__dirname,'../xiangqi-analyzer.html'),'utf8');
+    const script=[...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].map(m=>m[1]).join('\n');
+    const wanted=new Set(['stopNativeAnalysisSearchForRestart','scheduleNativeAnalysisRestart']);
+    const functions=parser.parse(script).program.body.filter(n=>n.type==='FunctionDeclaration'&&wanted.has(n.id.name))
+      .map(n=>script.slice(n.start,n.end)).join('\n');
+    const calls=[],resultEl={innerHTML:''};
+    const context=vm.createContext({
+      analysisRunning:true,analysisCancelled:false,compositeAnalysisStatus:{},nativeAnalysisRestartGeneration:0,
+      nativeAnalysisRestartPending:false,NATIVE_RECONNECT_DELAY_MS:0,board:[['original']],
+      BRAIN_LABELS:{nativecombo:'Phối hợp Native'},compositeBrains:engine=>engine==='nativecombo'?['pikafish','bruteforce']:[engine],
+      WebSocket:{OPEN:1},pikafishWs:{readyState:1,send:cmd=>calls.push('pika-stop:'+cmd)},bfWs:{readyState:1,send:cmd=>calls.push('bf-stop:'+cmd)},
+      pikafishActiveWs:null,bfActiveWs:null,
+      stopAnalysisTimersOnly:()=>calls.push('timers'),
+      setAnalysisButtonsRunning:value=>calls.push('buttons:'+value),ensurePikafishSocket:async()=>calls.push('pika'),
+      ensureBruteForceSocket:async()=>calls.push('bf'),startAnalysis:()=>calls.push('restart'),
+      setTimeout:(fn)=>{fn();return 0;},console
+    });
+    vm.runInContext('var nativeAnalysisRestartGeneration=0,nativeAnalysisRestartPending=false;\n'+functions,context);
+    assert.equal(context.scheduleNativeAnalysisRestart('nativecombo',[['original']],resultEl),true);
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.deepEqual(calls,['timers','pika-stop:stop','bf-stop:stop','buttons:false','pika','bf','restart']);
+    assert.match(resultEl.innerHTML,/chạy lại phân tích từ đầu/);
   });
   await test('bridge waits for bestmove before changing engine state', () => {
     const f=bridgeFixture(),ws=f.connect(),c=f.children[0];

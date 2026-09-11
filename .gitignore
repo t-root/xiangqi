@@ -1,4 +1,5 @@
 node_modules/ 
+.build/
 xiangqi-analyzer.html
 tiktok_auto_reply_extension/
 dist/XiangqiAnalyzer.exe

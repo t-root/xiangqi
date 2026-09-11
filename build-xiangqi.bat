@@ -424,17 +424,10 @@ $pikaDestExe = Join-Path $pikaDest 'pikafish-bmi2.exe'
 New-Item -ItemType Directory -Force -Path $pikaDest | Out-Null
 Copy-Item -LiteralPath $OutExe -Destination $pikaDestExe -Force
 
-$pikafishWebDir = Join-Path $ProjectRoot 'pikafish-web'
-$pikafishWebFiles = @('pikafish.js', 'pikafish.wasm', 'pikafish.data')
-$missingPikafishWeb = $pikafishWebFiles | Where-Object {
-    $candidate = Join-Path $pikafishWebDir $_
-    -not (Test-Path -LiteralPath $candidate) -or (Get-Item -LiteralPath $candidate).Length -eq 0
-}
-if ($missingPikafishWeb) {
-    Write-Host "Dang build Pikafish Web tu ma nguon trong may ($($missingPikafishWeb -join ', '))..."
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $ProjectRoot 'build-pikafish-web.ps1')
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-}
+# Rebuild the browser engine on every full build so it always matches Pikafish Native.
+Write-Host 'Dang build Pikafish Web tu cung ma nguon Pikafish...'
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $ProjectRoot 'build-pikafish-web.ps1')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 # Brute-force Web is the browser build of the exact native Brute-force core.
 # Rebuild it every full engine build so the .wasm cannot drift from bruteforce.exe.

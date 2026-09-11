@@ -6,6 +6,7 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
 $sourceRoot = Join-Path $projectRoot 'engine\pikafish-src\src'
 $outputRoot = Join-Path $projectRoot 'pikafish-web'
+$emscriptenTempRoot = Join-Path $projectRoot '.build\emscripten-temp'
 
 # Do not bind this build to one Windows user. Prefer the argument, EMSDK, a local emsdk,
 # then an em++ command already available in PATH.
@@ -48,13 +49,16 @@ $env:PYTHON = $python
 $env:Path = "$(Split-Path -Parent $python);$env:Path"
 
 New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
+New-Item -ItemType Directory -Force -Path $emscriptenTempRoot | Out-Null
+$env:EMCC_TEMP_DIR = $emscriptenTempRoot
 $sources = Get-ChildItem -LiteralPath $sourceRoot -Recurse -Filter '*.cpp' |
     Where-Object { $_.FullName -notmatch '\\universal\\' } |
     ForEach-Object { $_.FullName }
 
 $arguments = @(
     $empp, $sources,
-    '-std=c++17', '-O3', '-DNDEBUG', '-DIS_64BIT', '-DARCH=wasm32',
+    # Avoid Emscripten's Windows-incompatible in-place wasm-opt invocation.
+    '-std=c++17', '-O1', '-DNDEBUG', '-DIS_64BIT', '-DARCH=wasm32',
     '-DUSE_POPCNT', '-DUSE_SLOPPY_ATOMICS', '-DUSE_SSE2', '-DUSE_SSSE3', '-DUSE_SSE41',
     '-fno-exceptions', '-pthread', '-msimd128', '-msse', '-msse2', '-mssse3', '-msse4.1',
     '-sINITIAL_MEMORY=64MB', '-sALLOW_MEMORY_GROWTH', '-sSTACK_SIZE=3MB', '-sPTHREAD_POOL_SIZE=2',
@@ -66,5 +70,21 @@ $arguments = @(
 
 & $python @arguments
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+$wasmOpt = Join-Path $EmsdkRoot 'upstream\bin\wasm-opt.exe'
+$wasm = Join-Path $outputRoot 'pikafish.wasm'
+$optimizedWasm = Join-Path $emscriptenTempRoot 'pikafish.optimized.wasm'
+$wasmOptArguments = @(
+    '--strip-target-features', '--post-emscripten', '-O3', '--low-memory-unused', '--zero-filled-memory',
+    '--pass-arg=directize-initial-contents-immutable', '--no-stack-ir',
+    $wasm, '-o', $optimizedWasm,
+    '--mvp-features', '--enable-simd', '--enable-threads', '--enable-bulk-memory', '--enable-bulk-memory-opt',
+    '--enable-call-indirect-overlong', '--enable-multivalue', '--enable-mutable-globals',
+    '--enable-nontrapping-float-to-int', '--enable-reference-types', '--enable-sign-ext'
+)
+& $wasmOpt @wasmOptArguments
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+[System.IO.File]::Copy($optimizedWasm, $wasm, $true)
+Remove-Item -LiteralPath $optimizedWasm -Force
 
 Get-ChildItem -LiteralPath $outputRoot -File | Select-Object Name, Length
