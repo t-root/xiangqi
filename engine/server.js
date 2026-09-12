@@ -43,7 +43,9 @@ function getLocalIP() {
 // fs, nhưng KHÔNG spawn() được (Windows cần một đường dẫn thật trên đĩa để chạy .exe con). Vì vậy
 // khi đóng gói, phải tự chép các file cần spawn/serve ra một thư mục thật cạnh file .exe trước.
 const isPkg = typeof process.pkg !== 'undefined';
-const DATA_DIR = isPkg ? path.join(path.dirname(process.execPath), 'xiangqi-data') : path.join(__dirname, '..');
+// Keep all runtime files in one predictable, user-visible folder next to the
+// packaged executable.  This also makes the Chrome extension easy to find.
+const DATA_DIR = isPkg ? path.join(path.dirname(process.execPath), 'xiangqi_data') : path.join(__dirname, '..');
 
 function sameFileContent(a, b) {
     const digest = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -56,6 +58,17 @@ function ensureExtracted(snapshotRelPath, destAbsPath, verifyContent = false) {
         (!verifyContent || sameFileContent(srcAbsPath, destAbsPath))) return;
     fs.mkdirSync(path.dirname(destAbsPath), { recursive: true });
     fs.copyFileSync(srcAbsPath, destAbsPath);
+}
+
+function ensureExtractedDirectory(snapshotRelDir, destAbsDir) {
+    const srcAbsDir = path.join(__dirname, snapshotRelDir);
+    fs.mkdirSync(destAbsDir, { recursive: true });
+    for (const entry of fs.readdirSync(srcAbsDir, { withFileTypes: true })) {
+        const sourceRel = path.join(snapshotRelDir, entry.name);
+        const destination = path.join(destAbsDir, entry.name);
+        if (entry.isDirectory()) ensureExtractedDirectory(sourceRel, destination);
+        else if (entry.isFile()) ensureExtracted(sourceRel, destination, true);
+    }
 }
 
 // Bộ nhận diện ảnh bàn cờ: runtime ONNX (WebAssembly) + hai model. Trình duyệt tải qua HTTP nên
@@ -123,6 +136,17 @@ if (isPkg) {
         } catch (e) {
             console.warn(`KhÃ´ng bung Ä‘Æ°á»£c Brute-force Web ${file}: ${e.message}`);
         }
+    }
+
+    // Package the TikTok auto-reply extension alongside the app so users can
+    // load it from xiangqi_data without a separate ZIP download.
+    try {
+        ensureExtractedDirectory(
+            path.join('..', 'tiktok_auto_reply_extension'),
+            path.join(DATA_DIR, 'tiktok_auto_reply_extension')
+        );
+    } catch (e) {
+        console.warn(`Could not extract TikTok extension: ${e.message}`);
     }
 } else {
     PIKAFISH_DIR = path.join(__dirname, 'pikafish');

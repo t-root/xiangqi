@@ -31,6 +31,7 @@
       "../pikafish-web/pikafish.data",
       "../bruteforce-web/bruteforce.js",
       "../bruteforce-web/bruteforce.wasm",
+      "../tiktok_auto_reply_extension/**/*",
       "../vision/ort/*",
       "../vision/models/*"
     ]
