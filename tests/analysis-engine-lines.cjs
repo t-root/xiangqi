@@ -46,5 +46,17 @@ for (const combo of ['nativecombo', 'webcombo']) {
   c.board=c.cloneBoard(root.board);c.currentPlayer='red';c.installEngineHistory(root);
   c.guideSide='red';c.guideMode='win';c.guideCompositeLineChosen=false;
   c.refreshGuide();assert.equal(c.queries,1,'The root of a composite guide must ask the user to choose an engine move');
+  // Selecting Red starts directly on the completed BF PV, with no new composite query.
+  c.queries=undefined;c.guideAttacker=null;c.guideMode='play';c.guideCompositeLineChosen=true;
+  c.compositeRedGuideSeed=c.lastAnalysisEngineLines[brains[1]];
+  c.BRAIN_LABELS={ [brains[1]]: 'Brute-force' };
+  c.setGuideUI=()=>{};c.describeGuideMove=()=>'';c.guideMoveNumberText=()=>'';c.guideSwitchBtn=()=>'';
+  c.refreshGuide();assert.equal(c.moveToUci(c.guideBestMove),c.moveToUci(c.compositeRedGuideSeed.moves[0]));
+  assert.equal(c.queries,undefined,'Red must reuse BF PV before analysis');
+  // After Black chooses a different reply, the saved BF PV no longer matches and analysis resumes.
+  let redState=c.buildHypotheticalStateAfterMove(root,c.compositeRedGuideSeed.moves[0]);
+  redState=c.buildHypotheticalStateAfterMove(redState,move(0,8,0,7));
+  c.board=redState.board;c.currentPlayer=redState.side;c.installEngineHistory(redState);
+  c.refreshGuide();assert.equal(c.queries,1,'A deviation from BF PV must return to analysis');
   console.log('PASS '+combo+': distinct original lines; root asks for an engine move; attack/defense reuse without queries; history and deviation fallback');
 }
