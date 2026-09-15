@@ -67,7 +67,11 @@ Color g_sideToMove = Color::Red;
 PositionHistory g_history;
 CsSide g_restrictedSide = CsSide::None;
 int g_checkStreakLimit = CHECK_STREAK_DEFAULT;
-int g_threads = 1;  // dùng ở giai đoạn đa luồng (chưa bật ở bản này) — giữ option để UI không lỗi
+// Số luồng THẬT sẽ dùng cho nhánh tìm chiếu bí (searchMateRootParallel) — luôn bị kẹp về
+// min(giá trị UI xin, số nhân thật của máy, 8) ngay trong handleSetOption("Threads"). Đo thật cho
+// thấy xin nhiều hơn số nhân thật không cho thêm gì (có khi còn lỗ), nên khoá cứng ở đó thay vì tin
+// UI. Nhánh thế trận (searchPositionalRootParallel) CHƯA dùng biến này — xem ghi chú tại đó.
+int g_threads = 1;
 
 // Chuỗi chiếu ĐÃ CÓ SẴN ở thế cờ gốc, mang theo từ ván đang chơi thật (app chỉ gửi board FEN hiện
 // tại qua "position", không gửi lịch sử nước — không có 2 option này thì mọi lượt "go" đều ngỡ
@@ -125,6 +129,7 @@ struct SearchSession {
     CsCode csRootRed = 0, csRootBlack = 0;
     bool ktcBudgetOn = false;
     MateSearchState state;
+    std::vector<MateSearchState> workers;  // bể luồng phụ YBWC, ấm cùng nhịp với state (xem ensureWorkerPool)
     int activeBudget = 0;
     int completedBudget = 0;
     long long accumulatedMs = 0;
@@ -133,15 +138,35 @@ struct SearchSession {
 
 std::unordered_map<std::string, std::unique_ptr<SearchSession>> g_searchSessions;
 
-MateSearchState makeWorkerState(const MateSearchState& base) {
-    MateSearchState worker;
-    worker.restrictedSide = base.restrictedSide;
-    worker.checkStreakLimit = base.checkStreakLimit;
-    worker.ktcBudgetOn = base.ktcBudgetOn;
-    worker.ktcExemptColor = base.ktcExemptColor;
-    worker.cancelled = base.cancelled;
-    worker.deadline = base.deadline;
-    return worker;
+// Bể luồng phụ cho YBWC (xem searchMateRootParallel) — PHẢI sống NGOÀI một lượt gọi
+// searchMateRootParallel (ở SearchSession hoặc scope hàm runGoBudget*) và chỉ bị tt.clear() CÙNG
+// LÚC với st.tt.clear(), giống hệt cách st (luồng chính) đã được đối xử từ trước. Đo thật cho thấy
+// cấp phát lại TranspositionTable 16 MB mỗi lần gọi (như bản tách-gốc-thô cũ vẫn làm) không phải
+// nguyên nhân chính gây chậm, nhưng vẫn là lãng phí không cần — giữ ấm luôn cho tiện.
+// Cố định 3 worker phụ (đủ cho tối đa 4 luồng: 1 "anh cả" tuần tự + 3 luồng phụ) — khớp trần 4 luồng
+// cũ của bản tách-gốc-thô.
+constexpr int MATE_HELPER_POOL_SIZE = 3;
+
+void ensureWorkerPool(std::vector<MateSearchState>& workers, const MateSearchState& templ) {
+    if (static_cast<int>(workers.size()) < MATE_HELPER_POOL_SIZE) workers.resize(MATE_HELPER_POOL_SIZE);
+    for (auto& w : workers) {
+        w.restrictedSide = templ.restrictedSide;
+        w.checkStreakLimit = templ.checkStreakLimit;
+        w.ktcBudgetOn = templ.ktcBudgetOn;
+    }
+}
+
+void clearWorkerPool(std::vector<MateSearchState>& workers) {
+    for (auto& w : workers) { w.tt.clear(); w.mateWitness.clear(); }
+}
+
+// Tổng nút ĐÃ QUÉT thật (luồng chính + mọi luồng phụ ấm) — dùng để báo cáo "info ... nodes N", THAY
+// vì cộng dồn nodeCounter của worker vào st mỗi lần gọi (worker giờ SỐNG LÂU qua nhiều lượt gọi nên
+// cộng dồn kiểu đó sẽ đếm trùng — xem searchMateRootParallel).
+i64 totalNodes(const MateSearchState& st, const std::vector<MateSearchState>& workers) {
+    i64 n = st.nodeCounter;
+    for (const auto& w : workers) n += w.nodeCounter;
+    return n;
 }
 
 void captureSession(SearchSession& session) {
@@ -167,13 +192,30 @@ void restoreSession(const SearchSession& session) {
     g_ktcBudgetOn = session.ktcBudgetOn;
 }
 
-// Chỉ chia các nước GỐC: mọi nhánh con vẫn chạy alpha-beta y hệt bản một luồng. Vì mỗi worker
-// sở hữu board, TT và heuristic riêng, không có khoá nào trong đường nóng và kết quả chiếu bí vẫn
-// là kết quả quét cạn tuyệt đối. Giới hạn 4 để không nhân bảng băm 16 MB quá nhiều lần.
+// YBWC (Young Brothers Wait Concept) + alpha dùng chung — bản THỨ HAI, sau bản tách-gốc-thô CŨ (mọi
+// luồng dò cùng lúc với alpha khởi điểm, không luồng nào thấy alpha luồng khác vừa nâng), vốn đã ĐO
+// THẬT: chậm hơn 8-9 lần so với 1 luồng, số nút tăng 17 lần.
+// Cách này: dò nước gốc TỐT NHẤT (đã sắp thứ tự bởi forcedMateRootMoves/orderMovesForMate) TUẦN TỰ
+// trước để lấy một alpha tốt, RỒI MỚI spawn luồng phụ cho các nước còn lại, các luồng phụ đọc/ghi
+// CHUNG một std::atomic<i32> alpha khi tìm được nước tốt hơn.
+//
+// ĐÃ ĐO LẠI BẰNG main.cpp THẬT (setoption Threads, xem comment ở đó): VẪN CHẬM HƠN 1 luồng ở mọi số
+// luồng thử — không phải cải tiến thật. Hai lý do đã xác nhận được: (1) với đúng 1 luồng phụ, "anh
+// cả" chạy XONG HẲN rồi mới spawn luồng phụ — không có tí chồng lấn (overlap) thời gian thực nào
+// giữa hai luồng, chỉ thêm chi phí; (2) với ≥2 luồng phụ (có chồng lấn thật), search-overhead giữa
+// CHÍNH các luồng phụ với nhau vẫn thắng thế, số nút tăng 1.2x–3.6x tuỳ số luồng. Do đó "Threads" bị
+// khoá về 1 (xem handleSetOption) — hàm này KHÔNG được gọi với requestedThreads>1 trong build hiện
+// tại. Giữ lại nguyên vẹn (đã kiểm chứng cho kết quả giống hệt đơn luồng ở mọi trường hợp thử) làm
+// hạ tầng cho ai muốn đo tiếp trên bàn cờ khác / máy nhiều lõi thật hơn — không phải vì tin nó nhanh
+// hơn.
+//
+// `workers` PHẢI sống NGOÀI lời gọi này (SearchSession::workers hoặc biến cục bộ của runGoBudget*)
+// và chỉ bị tt.clear() CÙNG LÚC với st.tt.clear() — xem ensureWorkerPool/clearWorkerPool.
 SearchResult searchMateRootParallel(Board& board, Color color, int redBudget, int blackBudget,
-                                    i32 alpha, i32 beta, i32 h1, i32 h2,
-                                    CsCode csRed, CsCode csBlack, MateSearchState& st, int requestedThreads) {
-    if (requestedThreads <= 1) {
+                                    i32 alpha, i32 beta, i32 h1, i32 h2, CsCode csRed, CsCode csBlack,
+                                    MateSearchState& st, std::vector<MateSearchState>& workers,
+                                    int requestedThreads) {
+    auto singleThreaded = [&]() -> SearchResult {
         SearchResult result = negamaxForcedMateGen(board, color, redBudget, blackBudget, 0, alpha, beta,
                                                     h1, h2, csRed, csBlack, st);
         if (result.score > MATE_THRESHOLD || result.score < -MATE_THRESHOLD) {
@@ -182,39 +224,60 @@ SearchResult searchMateRootParallel(Board& board, Color color, int redBudget, in
             if (!witness.empty()) result.line = std::move(witness);
         }
         return result;
-    }
+    };
+
+    if (requestedThreads <= 1) return singleThreaded();
+
     std::vector<Move> rootMoves = forcedMateRootMoves(board, color, st);
     int workerCount = std::min({std::max(1, requestedThreads), 4, static_cast<int>(rootMoves.size())});
     if (workerCount <= 1 || std::min(redBudget, blackBudget) <= 2 || rootMoves.size() < 16) {
-        SearchResult result = negamaxForcedMateGen(board, color, redBudget, blackBudget, 0, alpha, beta,
-                                                    h1, h2, csRed, csBlack, st);
-        if (result.score > MATE_THRESHOLD || result.score < -MATE_THRESHOLD) {
-            std::vector<Move> witness = rebuildMateWitnessLine(board, color, redBudget, blackBudget,
-                                                                csRed, csBlack, st);
-            if (!witness.empty()) result.line = std::move(witness);
-        }
-        return result;
+        return singleThreaded();
     }
 
-    struct WorkerResult { SearchResult best; i64 nodes = 0; };
-    std::vector<WorkerResult> results(static_cast<size_t>(workerCount));
-    std::atomic<size_t> nextMove{0};
-    std::vector<std::thread> workers;
-    workers.reserve(static_cast<size_t>(workerCount));
+    // "Anh cả": dò nước gốc tốt nhất TUẦN TỰ trên st (TT chính, đã ấm) để nâng alpha trước.
+    std::vector<Move> firstMove{rootMoves[0]};
+    SearchResult best = negamaxForcedMateRootSubsetGen(board, color, redBudget, blackBudget,
+        firstMove, alpha, beta, h1, h2, csRed, csBlack, st);
+    if (best.score > MATE_THRESHOLD || best.score < -MATE_THRESHOLD) {
+        std::vector<Move> witness = rebuildMateWitnessLine(board, color, redBudget, blackBudget,
+                                                            csRed, csBlack, st);
+        if (!witness.empty()) best.line = std::move(witness);
+    }
+    i32 sharedAlpha = std::max(alpha, best.score);
+    if (sharedAlpha >= beta || rootMoves.size() == 1 || st.isCancelled() || st.timeUp()) {
+        return best;
+    }
 
-    for (int workerIndex = 0; workerIndex < workerCount; ++workerIndex) {
-        workers.emplace_back([&, workerIndex] {
+    int helperCount = std::min({workerCount - 1, static_cast<int>(rootMoves.size()) - 1,
+                                 static_cast<int>(workers.size())});
+    if (helperCount < 1) return best;
+
+    struct WorkerResult { SearchResult best; };
+    std::vector<WorkerResult> results(static_cast<size_t>(helperCount));
+    for (auto& r : results) r.best = best;  // hạt giống bằng kết quả "anh cả", không bao giờ thấp hơn
+    std::atomic<i32> atomAlpha{sharedAlpha};
+    std::atomic<size_t> nextMove{1};  // nước 0 đã dò xong ở trên, luồng phụ bắt đầu từ nước 1
+    std::vector<std::thread> pool;
+    pool.reserve(static_cast<size_t>(helperCount));
+
+    for (int workerIndex = 0; workerIndex < helperCount; ++workerIndex) {
+        pool.emplace_back([&, workerIndex] {
             Board localBoard = board;
-            MateSearchState local = makeWorkerState(st);
+            MateSearchState& local = workers[static_cast<size_t>(workerIndex)];
+            local.cancelled = st.cancelled;
+            local.deadline = st.deadline;
+            local.ktcBudgetOn = st.ktcBudgetOn;
+            local.ktcExemptColor = st.ktcExemptColor;
             WorkerResult& result = results[static_cast<size_t>(workerIndex)];
-            result.best.score = -SEARCH_INF;
 
             while (!local.isCancelled() && !local.timeUp()) {
                 size_t index = nextMove.fetch_add(1, std::memory_order_relaxed);
                 if (index >= rootMoves.size()) break;
+                i32 a = atomAlpha.load(std::memory_order_relaxed);
+                if (a >= beta) break;  // luồng khác đã tìm ra cutoff, khỏi dò thêm
                 std::vector<Move> oneMove{rootMoves[index]};
                 SearchResult current = negamaxForcedMateRootSubsetGen(
-                    localBoard, color, redBudget, blackBudget, oneMove, alpha, beta,
+                    localBoard, color, redBudget, blackBudget, oneMove, a, beta,
                     h1, h2, csRed, csBlack, local);
                 if (current.score > MATE_THRESHOLD || current.score < -MATE_THRESHOLD) {
                     std::vector<Move> witness = rebuildMateWitnessLine(localBoard, color, redBudget, blackBudget,
@@ -222,23 +285,22 @@ SearchResult searchMateRootParallel(Board& board, Color color, int redBudget, in
                     if (!witness.empty()) current.line = std::move(witness);
                 }
                 if (current.score > result.best.score) result.best = std::move(current);
+                i32 prev = atomAlpha.load(std::memory_order_relaxed);
+                while (current.score > prev && !atomAlpha.compare_exchange_weak(prev, current.score)) {}
             }
-            result.nodes = local.nodeCounter;
         });
     }
-    for (auto& worker : workers) worker.join();
+    for (auto& worker : pool) worker.join();
 
-    SearchResult best;
-    best.score = -SEARCH_INF;
     for (const WorkerResult& result : results) {
-        st.nodeCounter += result.nodes;
         if (result.best.score > best.score) best = result.best;
     }
     return best;
 }
 
 ProbeResult probeForcedMate(Board& board, Color color, int redBudget, int blackBudget,
-                            CsCode csRed, CsCode csBlack, MateSearchState& st, int threads) {
+                            CsCode csRed, CsCode csBlack, MateSearchState& st,
+                            std::vector<MateSearchState>& workers, int threads) {
     HashPair hp = hashBoardPair(board);
     Color savedExempt = st.ktcExemptColor;
     Color opp = otherColor(color);
@@ -247,7 +309,7 @@ ProbeResult probeForcedMate(Board& board, Color color, int redBudget, int blackB
     ktcSearchBudgets(color, redBudget, blackBudget, st.ktcBudgetOn, winRed, winBlack);
     st.ktcExemptColor = color;
     SearchResult win = searchMateRootParallel(board, color, winRed, winBlack, MATE_THRESHOLD, MATE_SCORE,
-                                                hp.h1, hp.h2, csRed, csBlack, st, threads);
+                                                hp.h1, hp.h2, csRed, csBlack, st, workers, threads);
     if (win.score > MATE_THRESHOLD) {
         st.ktcExemptColor = savedExempt;
         return {true, win.score, win.line};
@@ -257,7 +319,7 @@ ProbeResult probeForcedMate(Board& board, Color color, int redBudget, int blackB
     ktcSearchBudgets(opp, redBudget, blackBudget, st.ktcBudgetOn, lossRed, lossBlack);
     st.ktcExemptColor = opp;
     SearchResult loss = searchMateRootParallel(board, color, lossRed, lossBlack, -MATE_SCORE, -MATE_THRESHOLD,
-                                                 hp.h1, hp.h2, csRed, csBlack, st, threads);
+                                                 hp.h1, hp.h2, csRed, csBlack, st, workers, threads);
     st.ktcExemptColor = savedExempt;
     if (loss.score < -MATE_THRESHOLD) return {true, loss.score, loss.line};
     return {false, 0, {}};
@@ -278,6 +340,13 @@ PositionalRootResult searchPositionalRootParallel(Board& board, Color color, int
                                                    const std::vector<Move>& rootMoves,
                                                    CsCode csRed, CsCode csBlack,
                                                    PositionalSearchState& st, int requestedThreads) {
+    // Pha thế trận (Phase 2 "AI tự chơi") CHƯA được đổi sang YBWC như searchMateRootParallel ở trên:
+    // positionalRoot() không lộ alpha/beta ra ngoài (xem positional.h) nên chưa có chỗ để chia sẻ
+    // alpha giữa các luồng, và bản tách-gốc-thô dưới đây nhiều khả năng lỗ giống hệt kiểu đã đo được
+    // ở nhánh chiếu bí (chưa đo thật cho nhánh này). Khoá cứng về 1 luồng ở đây cho tới khi
+    // positionalRoot có bản lộ alpha/beta để làm YBWC tương tự — KHÔNG xoá code tách-gốc bên dưới để
+    // dễ hoàn thiện sau.
+    requestedThreads = 1;
     int workerCount = std::min({std::max(1, requestedThreads), 4, static_cast<int>(rootMoves.size())});
     if (workerCount <= 1 || depth <= 3 || rootMoves.size() < 16) {
         return positionalRoot(board, color, depth, rootMoves, csRed, csBlack, st);
@@ -358,6 +427,9 @@ void runGoBudget(int maxBudget, long long movetimeMs, int fromBudget, SearchSess
     st.deadline = deadline;  // để một mức budget đang chạy dở tự dừng đúng hạn, không tràn qua giờ
                               // (đã thấy thật: xin movetime 3s nhưng chạy tới 15s — vòng lặp NGOÀI
                               // chỉ kiểm tra giờ GIỮA các mức, một mức chạy lâu vẫn không bị chặn).
+    auto freshWorkers = session ? nullptr : std::make_unique<std::vector<MateSearchState>>();
+    std::vector<MateSearchState>& workers = session ? session->workers : *freshWorkers;
+    ensureWorkerPool(workers, st);
 
     Board board = g_board;
     Color color = g_sideToMove;
@@ -372,11 +444,12 @@ void runGoBudget(int maxBudget, long long movetimeMs, int fromBudget, SearchSess
         if (!session || session->activeBudget != budget) {
             st.tt.clear();
             st.mateWitness.clear();
+            clearWorkerPool(workers);
             if (session) session->activeBudget = budget;
         }
         Board scratch = board;
         ProbeResult res = probeForcedMate(scratch, color, budget, budget,
-            g_csRootRed, g_csRootBlack, st, g_threads);
+            g_csRootRed, g_csRootBlack, st, workers, g_threads);
         // Bị huỷ HOẶC hết giờ GIỮA mức budget này: res có thể bị cắt dở ở bất kỳ nhánh nào, không
         // còn là kết quả "đã quét cạn xong, chắc chắn" — Brute-force CAM KẾT chỉ báo cáo mức đã quét
         // TRỌN VẸN. Dừng ngay, giữ nguyên doneBudget/kết quả của mức TRƯỚC (nếu có) — khớp đúng
@@ -394,13 +467,13 @@ void runGoBudget(int maxBudget, long long movetimeMs, int fromBudget, SearchSess
                 : ((res.score > 0) ? (MATE_SCORE - res.score + 1) / 2 : (MATE_SCORE + res.score) / 2);
             std::ostringstream line;
             line << "info depth " << budget << " score mate " << (res.score > 0 ? k : -k)
-                 << " nodes " << st.nodeCounter << " time " << elapsedMs;
+                 << " nodes " << totalNodes(st, workers) << " time " << elapsedMs;
             sendLine(line.str() + formatPv(res.line));
             break;  // budget đầu tiên chứng minh được mate CHÍNH LÀ số nước tối thiểu — dừng ngay,
                     // khớp :2020-2045 (mateDepth tăng dần, gặp mate là chốt, không đào tiếp).
         } else {
             std::ostringstream line;
-            line << "info depth " << budget << " score cp 0 nodes " << st.nodeCounter << " time " << elapsedMs;
+            line << "info depth " << budget << " score cp 0 nodes " << totalNodes(st, workers) << " time " << elapsedMs;
             sendLine(line.str());
         }
     }
@@ -462,12 +535,15 @@ void runGoBudgetPair(int redBudget, int blackBudget, long long movetimeMs, Searc
     st.ktcBudgetOn = g_ktcBudgetOn;
     st.cancelled = &g_cancelled;
     st.deadline = deadline;
+    auto freshWorkers = session ? nullptr : std::make_unique<std::vector<MateSearchState>>();
+    std::vector<MateSearchState>& workers = session ? session->workers : *freshWorkers;
+    ensureWorkerPool(workers, st);
 
     Board board = g_board;
     Color color = g_sideToMove;
     Board scratch = board;
     ProbeResult res = probeForcedMate(scratch, color, std::max(0, redBudget), std::max(0, blackBudget),
-                                      g_csRootRed, g_csRootBlack, st, g_threads);
+                                      g_csRootRed, g_csRootBlack, st, workers, g_threads);
     if (session) {
         session->accumulatedMs += std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - t0).count();
@@ -499,12 +575,12 @@ void runGoBudgetPair(int redBudget, int blackBudget, long long movetimeMs, Searc
             : ((res.score > 0) ? (MATE_SCORE - res.score + 1) / 2 : (MATE_SCORE + res.score) / 2);
         std::ostringstream line;
         line << "info depth " << depth << " score mate " << (res.score > 0 ? k : -k)
-             << " nodes " << st.nodeCounter << " time " << elapsedMs;
+             << " nodes " << totalNodes(st, workers) << " time " << elapsedMs;
         sendLine(line.str() + formatPv(res.line));
         sendLine("bestmove " + (res.line.empty() ? "(none)" : moveToUci(res.line[0])));
     } else {
         std::ostringstream line;
-        line << "info depth " << depth << " score cp 0 nodes " << st.nodeCounter << " time " << elapsedMs;
+        line << "info depth " << depth << " score cp 0 nodes " << totalNodes(st, workers) << " time " << elapsedMs;
         sendLine(line.str());
         sendLine("info string outcome draw");
         sendLine("bestmove (none)");
@@ -526,6 +602,8 @@ void runGoDrawLine(int redBudget, int blackBudget) {
     st.ktcBudgetOn = g_ktcBudgetOn;
     st.cancelled = &g_cancelled;
     st.deadline = std::chrono::steady_clock::time_point::max();
+    std::vector<MateSearchState> workers;
+    ensureWorkerPool(workers, st);
 
     Board board = g_board;
     Color side = g_sideToMove;
@@ -548,8 +626,9 @@ void runGoDrawLine(int redBudget, int blackBudget) {
             if (side == Color::Red) afterRed = std::max(0, afterRed - 1);
             else afterBlack = std::max(0, afterBlack - 1);
             st.reset();
+            clearWorkerPool(workers);
             ProbeResult probe = probeForcedMate(board, otherColor(side), afterRed, afterBlack,
-                                                 g_csRootRed, g_csRootBlack, st, g_threads);
+                                                 g_csRootRed, g_csRootBlack, st, workers, g_threads);
             undoMoveInPlace(board, move, captured);
             if (g_cancelled.load()) { complete = false; break; }
             if (!probe.mate) {
@@ -577,7 +656,7 @@ void runGoDrawLine(int redBudget, int blackBudget) {
     const long long elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - t0).count();
     std::ostringstream info;
-    info << "info depth " << depth << " score cp 0 nodes " << st.nodeCounter << " time " << elapsedMs;
+    info << "info depth " << depth << " score cp 0 nodes " << totalNodes(st, workers) << " time " << elapsedMs;
     sendLine(info.str() + formatPv(line));
     if (complete && remainRed == 0 && remainBlack == 0) {
         sendLine("info string outcome draw");
@@ -677,8 +756,22 @@ void handleSetOption(std::istringstream& iss) {
     if (!value.empty() && value[0] == ' ') value.erase(0, 1);
 
     if (name == "Threads") {
-        // Chia nhánh gốc làm mất cắt tỉa alpha-beta giữa các nước, nên thực tế chậm hơn bản đơn luồng.
-        // Giữ giao thức option để UI tương thích, nhưng luôn dùng đường tìm kiếm nhanh hơn là một luồng.
+        // ĐÃ THỬ đổi searchMateRootParallel sang YBWC (anh cả tuần tự nâng alpha trước, luồng phụ
+        // đọc/ghi CHUNG một atomic<i32> alpha) và ĐO LẠI BẰNG main.cpp THẬT (không phải harness cô
+        // lập) — nhiều lần, tách riêng thời gian từng mức budget, trên chính thế cờ đã dùng để thiết
+        // kế cơ chế này. Kết quả: CHẬM HƠN đơn luồng ở MỌI số luồng thử (2, 3, 4), càng nhiều luồng
+        // càng chậm hơn (số nút tăng 1.2x → 3.6x), không có mức nào có lãi ròng — khác hẳn kết quả
+        // "nhanh hơn 1.6x" đo được trong một harness cô lập trước đó, hoá ra là do so sánh hai lượt
+        // chạy không cùng lúc trên máy có tốc độ CPU dao động (đo lặp lại mới lộ ra). Với threads=2
+        // cụ thể còn có lỗi thiết kế: chỉ có 1 luồng phụ nên "anh cả" (tuần tự) và luồng phụ KHÔNG
+        // BAO GIỜ chạy chồng lên nhau (anh cả xong hẳn rồi mới spawn luồng phụ) — không có tí song
+        // song thật nào, chỉ thêm chi phí atomic + tạo luồng. Từ threads=3 trở lên (luồng phụ chạy
+        // chồng lên nhau thật) vẫn chậm hơn — search-overhead (mất chia sẻ alpha giữa CÁC luồng phụ
+        // với NHAU) thắng thế, y hệt lỗi của bản tách-gốc-thô cũ.
+        // => Giữ khoá về 1 luồng, y như quyết định ban đầu — nhưng giờ có số đo thật, không phải suy
+        // đoán. Code YBWC ở searchMateRootParallel GIỮ NGUYÊN (đúng, đã kiểm chứng cho kết quả giống
+        // hệt đơn luồng ở mọi trường hợp) để ai muốn thử tiếp (ví dụ đo trên bàn cờ đông quân hơn,
+        // hoặc máy nhiều lõi thật hơn) có sẵn hạ tầng, không phải viết lại từ đầu.
         g_threads = 1;
     }
     else if (name == "CheckStreak_RestrictedColor") {

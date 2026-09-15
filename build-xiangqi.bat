@@ -127,7 +127,7 @@ if not errorlevel 1 set "CL_CMD=cl"
 if defined GPP_CMD (
     echo Using g++ to build Brute-force...
     rem Use a self-contained executable so it does not require MinGW DLLs at runtime.
-    "%GPP_CMD%" -std=c++17 -O2 -pthread -static -static-libgcc -static-libstdc++ -o "%BRUTEFORCE_SRC%\bruteforce.exe" %BRUTEFORCE_SOURCES%
+    "%GPP_CMD%" -std=c++17 -O3 -pthread -static -static-libgcc -static-libstdc++ -o "%BRUTEFORCE_SRC%\bruteforce.exe" %BRUTEFORCE_SOURCES%
     if errorlevel 1 (
         echo.
         echo *** Brute-force build failed with g++ ***
@@ -442,7 +442,7 @@ $bruteforceSources = @('main.cpp', 'eval.cpp', 'fen.cpp', 'hash.cpp', 'movegen.c
 Write-Host 'Dang dung Brute-force...'
 Push-Location $bruteforceSrc
 try {
-    & $gpp.Source '-std=c++17' '-O2' '-pthread' '-static' '-static-libgcc' '-static-libstdc++' '-o' $bruteforceOut @bruteforceSources
+    & $gpp.Source '-std=c++17' '-O3' '-pthread' '-static' '-static-libgcc' '-static-libstdc++' '-o' $bruteforceOut @bruteforceSources
     if ($LASTEXITCODE -ne 0) { exit 1 }
 } finally {
     Pop-Location

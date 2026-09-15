@@ -45,6 +45,26 @@ std::vector<ScoredMove> pseudoScoredMoves(const Board& b, Color color) {
     return out;
 }
 
+// Như pseudoScoredMoves() ở trên, nhưng NẠP VÀO buffer có sẵn (rawBuf/outBuf) thay vì cấp phát mới —
+// dùng ở đường nóng negamaxForcedMateGen (gọi ở MỌI nút). .clear() chỉ đưa size về 0, GIỮ NGUYÊN
+// capacity đã cấp phát từ lần ghé qua độ sâu này trước đó, nên từ lần thứ hai trở đi không còn
+// new/delete nào cho hai buffer này nữa. Nội dung cuối cùng của outBuf giống hệt pseudoScoredMoves(),
+// chỉ khác chỗ cấp phát.
+void fillPseudoScoredMoves(const Board& b, Color color, std::vector<Move>& rawBuf,
+                            std::vector<ScoredMove>& outBuf) {
+    rawBuf.clear();
+    generatePseudoMoveList(b, color, rawBuf);
+    outBuf.clear();
+    outBuf.reserve(rawBuf.size());
+    for (const Move& m : rawBuf) {
+        ScoredMove sm;
+        sm.from = m.from; sm.to = m.to;
+        sm.piece = b[m.from.row][m.from.col];
+        sm.captured = b[m.to.row][m.to.col];
+        outBuf.push_back(sm);
+    }
+}
+
 }  // namespace
 
 namespace {
@@ -122,7 +142,9 @@ SearchResult negamaxForcedMateGen(Board& b, Color color, int redBudget, int blac
         if (hit.flag == TTFlag::Upper && hit.score <= alpha) return {hit.score, {}};
     }
 
-    std::vector<ScoredMove> moves = pseudoScoredMoves(b, color);
+    st.ensureMoveBuf(pliesFromRoot);
+    std::vector<ScoredMove>& moves = st.scoredMoveBuf[static_cast<size_t>(pliesFromRoot)];
+    fillPseudoScoredMoves(b, color, st.rawMoveBuf[static_cast<size_t>(pliesFromRoot)], moves);
     orderMovesForMate(moves, ttCode, ply, st);
 
     i32 best = -SEARCH_INF;

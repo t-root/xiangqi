@@ -71,6 +71,25 @@ struct MateSearchState {
     std::optional<std::chrono::steady_clock::time_point> deadline;
     std::unordered_map<MateWitnessKey, i32, MateWitnessKeyHash> mateWitness;
 
+    // Buffer nước đi TÁI DÙNG theo từng độ sâu (pliesFromRoot), để negamaxForcedMateGen không phải
+    // cấp phát 2 std::vector MỚI (raw pseudo-move list + danh sách đã chấm điểm) ở MỖI NÚT — trên
+    // một lượt quét cạn hàng trăm triệu nút, riêng chi phí new/delete lặp lại này đã đáng kể. Vì đệ
+    // quy là DFS một luồng (không có hai lời gọi active cùng lúc ở CÙNG một độ sâu), mỗi độ sâu có
+    // đúng MỘT cặp buffer sống suốt cả lượt tìm kiếm, chỉ .clear() (giữ nguyên capacity) rồi nạp lại
+    // ở mỗi lần ghé qua độ sâu đó — không dùng chỉ số ply đã CẮT NGƯỠNG ở MATE_MAX_PLY (dùng cho
+    // mateKillerA/B, chỉ ảnh hưởng gợi ý thứ tự nước, sai thì chậm chứ không sai kết quả) vì ở đây
+    // TRÙNG chỉ số giữa hai độ sâu THẬT khác nhau sẽ làm nút con ghi đè buffer nút cha đang dùng dở —
+    // dùng thẳng pliesFromRoot và tự lớn theo nhu cầu (ensureMoveBuf) để không bao giờ đụng nhau.
+    std::vector<std::vector<Move>> rawMoveBuf;
+    std::vector<std::vector<ScoredMove>> scoredMoveBuf;
+
+    void ensureMoveBuf(int pliesFromRoot) {
+        if (static_cast<int>(scoredMoveBuf.size()) <= pliesFromRoot) {
+            rawMoveBuf.resize(pliesFromRoot + 1);
+            scoredMoveBuf.resize(pliesFromRoot + 1);
+        }
+    }
+
     bool isCancelled() const { return cancelled && cancelled->load(std::memory_order_relaxed); }
     bool timeUp() const { return deadline && std::chrono::steady_clock::now() > *deadline; }
 
