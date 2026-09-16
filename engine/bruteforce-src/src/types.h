@@ -68,7 +68,6 @@ inline int moveCode(Square from, Square to) {
 struct Move {
     Square from{-1, -1};
     Square to{-1, -1};
-    bool isNull() const { return from.row < 0; }
     bool operator==(const Move& o) const { return from == o.from && to == o.to; }
 };
 constexpr Move NULL_MOVE{};

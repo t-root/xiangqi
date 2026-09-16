@@ -27,8 +27,6 @@ struct PositionalSearchState {
     std::optional<std::chrono::steady_clock::time_point> deadline;
 
     bool timeUp() const { return deadline && std::chrono::steady_clock::now() > *deadline; }
-
-    void clearHistoryScores() { std::fill(historyScores.begin(), historyScores.end(), 0); }
 };
 
 struct ScoredMoveP : Move {

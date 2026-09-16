@@ -14,9 +14,6 @@ bool kingsFacing(const Board& b);
 
 // Khớp isKingAttacked()/isInCheck() (:1357-1407).
 bool isKingAttacked(const Board& b, Color color, Square kingSq);
-inline bool isInCheck(const Board& b, Color color, const Square& kingSq) {
-    return isKingAttacked(b, color, kingSq);
-}
 
 // Khớp collectCheckerSquares() của app: chỉ số ô của MỌI quân đang chiếu Tướng bên `color`, xếp
 // TĂNG DẦN. Cùng bộ luật ăn quân với isKingAttacked, chỉ khác là thu hết thay vì thoát ngay ở quân
