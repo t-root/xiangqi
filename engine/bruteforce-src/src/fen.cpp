@@ -96,34 +96,42 @@ Square parseUciSquare(const std::string& s) {  // khớp :5594-5598
     return {9 - rank, col};
 }
 
+namespace {
+struct RootEntry { int sq, count; bool bonus; };
+}  // namespace
+
 CsCode parseCheckStreakRootOption(const std::string& value) {
-    std::vector<std::pair<int, int>> items;
+    std::vector<RootEntry> items;
     size_t pos = 0;
     while (pos < value.size()) {
         size_t comma = value.find(',', pos);
         std::string part = value.substr(pos, comma == std::string::npos ? std::string::npos : comma - pos);
         pos = comma == std::string::npos ? value.size() : comma + 1;
-        if (part.size() < 4 || part[2] != ':') continue;   // "e5:2"; khác thì bỏ (kể cả "none")
+        if (part.size() < 4 || part[2] != ':') continue;   // "e5:2[:1]"; khác thì bỏ (kể cả "none")
         // parseUciSquare không tự kiểm tra ký tự, nên kiểm ở đây: giá trị lạ mà lọt qua sẽ thành
         // chỉ số ô ngoài bàn và làm số gói vô nghĩa.
         if (part[0] < 'a' || part[0] > 'i' || part[1] < '0' || part[1] > '9') continue;
+        // Phần "số_lần" kết thúc ở dấu ':' thứ hai (nếu có phần "bonus" theo sau) hoặc cuối chuỗi.
+        size_t secondColon = part.find(':', 3);
+        size_t countEnd = secondColon == std::string::npos ? part.size() : secondColon;
         int count = 0;
-        for (size_t k = 3; k < part.size(); ++k) {
-            if (part[k] < '0' || part[k] > '9') { count = 0; break; }
+        bool countOk = countEnd > 3;
+        for (size_t k = 3; k < countEnd; ++k) {
+            if (part[k] < '0' || part[k] > '9') { countOk = false; break; }
             count = std::min(CS_COUNT_BASE - 1, count * 10 + (part[k] - '0'));
         }
-        if (count <= 0) continue;
-        if (count > CS_COUNT_BASE - 1) count = CS_COUNT_BASE - 1;
-        items.push_back({squareIndex(parseUciSquare(part.substr(0, 2))), count});
+        if (!countOk || count <= 0) continue;
+        bool bonus = secondColon != std::string::npos && secondColon + 1 < part.size() && part[secondColon + 1] == '1';
+        items.push_back({squareIndex(parseUciSquare(part.substr(0, 2))), count, bonus});
     }
     // Phải xếp theo ô tăng dần: cùng một tập quân thì mọi nơi phải ra cùng một số, không thì khoá
     // bảng nhớ của cùng một thế cờ lại khác nhau.
-    std::sort(items.begin(), items.end());
+    std::sort(items.begin(), items.end(), [](const RootEntry& a, const RootEntry& b) { return a.sq < b.sq; });
     CsCode code = 0, mult = 1;
     int slot = 0;
     for (auto& it : items) {
         if (slot >= CS_SLOTS) break;
-        code += CsCode(it.first * CS_COUNT_BASE + it.second) * mult;
+        code += CsCode((it.sq * CS_COUNT_BASE + it.count) * 2 + (it.bonus ? 1 : 0)) * mult;
         mult *= CS_DIGIT_BASE;
         ++slot;
     }

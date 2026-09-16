@@ -63,6 +63,21 @@ int  limit                = 2;
 // 0 = no streak in progress at the root (fresh position). Set through the "CheckStreak_RootRed" /
 // "CheckStreak_RootBlack" options, which carry a list of "square:count" pairs.
 u64 root[COLOR_NB] = {0, 0};
+// Off by default — set through "CheckStreak_BonusRule" (see engine.cpp).
+bool bonusRuleOn = false;
+
+// `mid` lies strictly between `from` and `king`, all three on the same file or the same rank —
+// used to recognise "captured the piece that had just interposed on this exact check line".
+// Mirrors squareBetweenOnLine() in the app / bruteforce-src.
+bool square_between_on_line(Square from, Square mid, Square king) {
+    int ff = int(file_of(from)), mf = int(file_of(mid)), kf = int(file_of(king));
+    int fr = int(rank_of(from)), mr = int(rank_of(mid)), kr = int(rank_of(king));
+    if (fr == mr && mr == kr)
+        return mf > std::min(ff, kf) && mf < std::max(ff, kf);
+    if (ff == mf && mf == kf)
+        return mr > std::min(fr, kr) && mr < std::max(fr, kr);
+    return false;
+}
 }
 
 namespace {
@@ -728,16 +743,30 @@ void Position::do_move(Move                      m,
         Bitboard checkers = st->checkersBB;
         while (checkers)
         {
-            Square s = pop_lsb(checkers);
-            int    n = CheckStreak::count_at(prev, s == to ? from : s) + 1;
-            // A count only ever has to survive up to limit + 1 (rule_judge ends the game at that
-            // point), so this clamp is unreachable with the limits the app uses; it is here so an
-            // absurd CheckStreak_Limit can never corrupt the packing.
+            Square s        = pop_lsb(checkers);
+            Square identSq  = s == to ? from : s;
+            int    prevN    = CheckStreak::count_at(prev, identSq);
+            int    n        = prevN + 1;
+            bool   bonus    = CheckStreak::bonus_at(prev, identSq);
+            // Optional extension: this exact piece was already holding a streak (prevN==1, i.e.
+            // this is its SECOND check and the interposer being captured blocked the piece's very
+            // FIRST check — confirmed with the user that a blocker appearing on the 2nd check or
+            // later must NOT grant this bonus, only the 1st-check blocker does), it is the one that
+            // just moved (s==to, not a bystander credited by a discovered check), it just captured a
+            // piece, and that piece was sitting between this piece's old square and the enemy king
+            // — i.e. it had just interposed on this piece's own (first) check line. Mirrors the
+            // bonus-detection block in csAdvanceAfterMove() (app) / rules.h (bruteforce-src).
+            if (!bonus && CheckStreak::bonusRuleOn && s == to && prevN == 1 && captured
+                && CheckStreak::square_between_on_line(from, to, king_square(them)))
+                bonus = true;
+            // A count only ever has to survive up to limit + 1 (+1 more with the bonus; rule_judge
+            // ends the game at that point), so this clamp is unreachable with the limits the app
+            // uses; it is here so an absurd CheckStreak_Limit can never corrupt the packing.
             if (n > CheckStreak::COUNT_BASE - 1)
                 n = CheckStreak::COUNT_BASE - 1;
             if (slot >= CheckStreak::SLOTS)
                 break;
-            next += u64(int(s) * CheckStreak::COUNT_BASE + n) * mult;
+            next += u64((int(s) * CheckStreak::COUNT_BASE + n) * 2 + (bonus ? 1 : 0)) * mult;
             mult *= CheckStreak::DIGIT_BASE;
             ++slot;
         }
@@ -1330,8 +1359,7 @@ bool Position::rule_judge(Value& result, int ply) {
     // Overflow always loses, even if that same move is checkmate (mirrors checkStreakOverflowScore
     // in the app — the mate-exception used to let position 50 march a pawn-check 4 times).
     Color mover = ~sideToMove;
-    if (CheckStreak::restricted[mover]
-        && CheckStreak::max_count(st->checkStreak[mover]) > CheckStreak::limit)
+    if (CheckStreak::restricted[mover] && CheckStreak::overflow(st->checkStreak[mover], CheckStreak::limit))
     {
         result = mate_in(ply);  // good for sideToMove: the mover just lost by rule
         return true;

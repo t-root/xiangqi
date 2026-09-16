@@ -18,9 +18,11 @@ std::string boardToXiangqiFen(const Board& b, Color colorToMove);
 // Khớp parseUciSquare/parseUciMove (:5594-5602): "h2e2" kiểu ký hiệu UCI của Pikafish.
 Square parseUciSquare(const std::string& s);
 
-// Đọc giá trị option "CheckStreak_RootRed"/"CheckStreak_RootBlack": danh sách "ô:số_lần" cách nhau
-// bằng dấu phẩy ("e5:2,c3:1"), "none" (hoặc bất cứ gì không đọc được) thành 0. Trả về đúng số gói
-// mà csAdvanceAfterMove hiểu — khớp csEncodeForProtocol của app, đọc theo chiều ngược lại.
+// Đọc giá trị option "CheckStreak_RootRed"/"CheckStreak_RootBlack": danh sách "ô:số_lần:bonus"
+// cách nhau bằng dấu phẩy ("e5:2:1,c3:1:0"), "none" (hoặc bất cứ gì không đọc được) thành 0.
+// "bonus" (0/1, có thể vắng mặt = 0) = quân đó đã dùng suất chiếu-thêm-1 của luật "cản rồi bị ăn"
+// chưa. Trả về đúng số gói mà csAdvanceAfterMove hiểu — khớp csEncodeForProtocol của app, đọc
+// theo chiều ngược lại.
 CsCode parseCheckStreakRootOption(const std::string& value);
 std::string squareToUci(Square s);
 std::string moveToUci(const Move& m);

@@ -129,14 +129,16 @@ constexpr int CHECK_STREAK_GAME_LIMIT = 3;
 
 // ===== Mã hoá trạng thái chuỗi chiếu của MỘT bên — khớp CS_SLOTS/CS_COUNT_BASE/CS_DIGIT_BASE
 // của app (xiangqi-analyzer.html, vùng "Mã hoá trạng thái chuỗi chiếu") =====
-// Trạng thái = tập (ô quân đang giữ chuỗi, số nước chiếu liên tiếp của quân đó). Quân giữ chuỗi là
-// quân ĐANG THẬT SỰ chiếu Tướng đối phương, nên chiếu đôi thì có nhiều quân cùng giữ chuỗi.
-// Gói vào một số nguyên: mỗi quân là một chữ số hệ CS_DIGIT_BASE, digit = ô * CS_COUNT_BASE +
-// số_lần (digit 0 = slot trống), các chữ số xếp theo ô TĂNG DẦN nên cùng một tập ra cùng một số.
+// Trạng thái = tập (ô quân đang giữ chuỗi, số nước chiếu liên tiếp của quân đó, đã dùng bonus
+// "cản rồi bị ăn" chưa). Quân giữ chuỗi là quân ĐANG THẬT SỰ chiếu Tướng đối phương, nên chiếu đôi
+// thì có nhiều quân cùng giữ chuỗi. Gói vào một số nguyên: mỗi quân là một chữ số hệ CS_DIGIT_BASE,
+// digit = (ô * CS_COUNT_BASE + số_lần) * 2 + bonus (digit 0 = slot trống), các chữ số xếp theo ô
+// TĂNG DẦN nên cùng một tập ra cùng một số — khớp bit-by-bit bản JS (xem csDecodeDigit ở đó).
 constexpr int CS_SLOTS = 4;
 constexpr int CS_COUNT_BASE = 8;
-constexpr int CS_DIGIT_BASE = 1024;
-constexpr int CS_ENTRY_CODES = NUM_SQUARES * CS_COUNT_BASE;  // 720
+// = NUM_SQUARES*CS_COUNT_BASE*2 (720*2=1440) làm tròn lên; digit thật tối đa 1439 < 2048.
+constexpr int CS_DIGIT_BASE = 2048;
+constexpr int CS_ENTRY_CODES = NUM_SQUARES * CS_COUNT_BASE * 2;  // 1440
 
 // Trạng thái đã gói. 4 chữ số × 10 bit = 40 bit nên phải là 64-bit (app dùng số thực nguyên chính
 // xác, cùng dãy giá trị). CÓ DẤU để dùng được -1 làm dấu hiệu "phạm luật", y như bản JS.

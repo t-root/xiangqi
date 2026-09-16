@@ -178,7 +178,8 @@ SearchResult negamaxForcedMateGen(Board& b, Color color, int redBudget, int blac
 
         if (haveOppKing) {
             CsCode ncs = csAdvanceAfterMove(b, myStreak, move, color, oppKing,
-                                            st.restrictedSide, st.checkStreakLimit);
+                                            st.restrictedSide, st.checkStreakLimit,
+                                            st.checkStreakBonusRuleOn, !captured.empty());
             if (ncs < 0) {
                 brokeRule = true;
                 score = -(MATE_SCORE - (pliesFromRoot + 1));
@@ -283,7 +284,8 @@ SearchResult negamaxForcedMateRootSubsetGen(Board& b, Color color, int redBudget
 
         if (haveOppKing) {
             CsCode ncs = csAdvanceAfterMove(b, myStreak, move, color, oppKing,
-                                            st.restrictedSide, st.checkStreakLimit);
+                                            st.restrictedSide, st.checkStreakLimit,
+                                            st.checkStreakBonusRuleOn, !captured.empty());
             if (ncs < 0) {
                 brokeRule = true;
                 score = -(MATE_SCORE - 1);
@@ -360,7 +362,8 @@ std::vector<Move> rebuildMateWitnessLine(Board board, Color color, int redBudget
 
         if (trackStreak) {
             const CsCode nextStreak = csAdvanceAfterMove(board, oldStreak, move, color, oppKing,
-                                                          st.restrictedSide, st.checkStreakLimit);
+                                                          st.restrictedSide, st.checkStreakLimit,
+                                                          st.checkStreakBonusRuleOn, !captured.empty());
             if (nextStreak < 0) return {};
             if (color == Color::Red) csRed = nextStreak; else csBlack = nextStreak;
         }

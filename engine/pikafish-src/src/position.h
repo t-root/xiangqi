@@ -95,40 +95,87 @@ struct StateInfo {
 // after Position::set() in Engine::set_position, exactly once per query.
 //
 // Packing (identical in shape to the app's, only the square numbering is Pikafish's own): the state
-// is a set of (square, consecutive checks) pairs, one base-CS_DIGIT_BASE digit each, digit =
-// square * CS_COUNT_BASE + count, digit 0 = empty slot, digits ordered by ascending square.
+// is a set of (square, consecutive checks, bonus) triples, one base-CS_DIGIT_BASE digit each, digit
+// = (square * CS_COUNT_BASE + count) * 2 + bonus, digit 0 = empty slot, digits ordered by ascending
+// square. "bonus" (see bonusRuleOn below) is the optional extension "captured the interposing
+// blocker while still checking" — mirrors csDecodeDigit()/checkStreakBonusRuleOn in the app.
 namespace CheckStreak {
 constexpr int SLOTS      = 4;   // more simultaneous checkers than this cannot happen in real play
-constexpr int COUNT_BASE = 8;   // a count never exceeds limit + 1, and limit is 2 or 3
-constexpr int DIGIT_BASE = 1024;
+constexpr int COUNT_BASE = 8;   // a count never exceeds limit + 1 (+1 more with the bonus), and limit is 2 or 3
+// = SQUARE_NB*COUNT_BASE*2 (90*8*2=1440) rounded up; the real max packed digit is 1439 < 2048.
+constexpr int DIGIT_BASE = 2048;
 
 extern bool restricted[COLOR_NB];
 extern int  limit;
 extern u64  root[COLOR_NB];
+// Optional extension: if the checking piece captures the very piece that had just interposed on
+// its own check line, and the capture itself still checks, that piece earns one extra allowed
+// check for the rest of the streak (see the bonus-detection block in Position::do_move). Off by
+// default, set through "CheckStreak_BonusRule" — mirrors checkStreakBonusRuleOn in the app.
+extern bool bonusRuleOn;
+
+struct Digit {
+    int  sq, n;
+    bool bonus;
+};
+inline Digit decode_digit(u64 digit) {
+    int bonus = int(digit % 2);
+    u64 rest  = (digit - u64(bonus)) / 2;
+    int n     = int(rest % COUNT_BASE);
+    int sq    = int((rest - u64(n)) / COUNT_BASE);
+    return {sq, n, bonus != 0};
+}
 
 // Consecutive checks credited to the piece standing on `s`, 0 if that square holds no streak.
 inline int count_at(u64 code, Square s) {
     while (code)
     {
-        int digit = int(code % DIGIT_BASE);
+        u64 digit = code % DIGIT_BASE;
         code /= DIGIT_BASE;
-        if (digit && digit / COUNT_BASE == int(s))
-            return digit % COUNT_BASE;
+        if (digit)
+        {
+            Digit d = decode_digit(digit);
+            if (d.sq == int(s))
+                return d.n;
+        }
     }
     return 0;
 }
 
-// Highest count in the state — this is what the limit is judged against (see Position::rule_judge).
-inline int max_count(u64 code) {
-    int best = 0;
+// Has the piece standing on `s` already used its "captured the blocker" bonus? False if `s` holds
+// no streak or the bonus hasn't been earned yet.
+inline bool bonus_at(u64 code, Square s) {
     while (code)
     {
-        int digit = int(code % DIGIT_BASE);
+        u64 digit = code % DIGIT_BASE;
         code /= DIGIT_BASE;
-        if (digit && digit % COUNT_BASE > best)
-            best = digit % COUNT_BASE;
+        if (digit)
+        {
+            Digit d = decode_digit(digit);
+            if (d.sq == int(s))
+                return d.bonus;
+        }
     }
-    return best;
+    return false;
+}
+
+// True if ANY checking piece packed in `code` has now checked more times in a row than it is
+// allowed (limit, or limit+1 for a piece holding the bonus) — see Position::rule_judge. Replaces
+// the old single max_count()>limit test now that different checkers packed in the same state can
+// have different effective limits once the bonus rule is on.
+inline bool overflow(u64 code, int limit) {
+    while (code)
+    {
+        u64 digit = code % DIGIT_BASE;
+        code /= DIGIT_BASE;
+        if (digit)
+        {
+            Digit d = decode_digit(digit);
+            if (d.n > limit + (d.bonus ? 1 : 0))
+                return true;
+        }
+    }
+    return false;
 }
 }
 

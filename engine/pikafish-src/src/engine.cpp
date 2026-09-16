@@ -58,13 +58,19 @@ constexpr NumaAutoPolicy DefaultNumaPolicy = BundledL3Policy{32};
 namespace {
 
 // Reads the "CheckStreak_RootRed"/"CheckStreak_RootBlack" option text — a comma separated list of
-// "square:count" pairs ("e4:2,c7:1"), anything unparsable (notably the "none" default) is skipped —
-// into the packed form described in position.h. Mirrors csEncodeForProtocol() in the app, read the
+// "square:count:bonus" triples ("e4:2:1,c7:1:0"; the ":bonus" tail may be missing, meaning 0),
+// anything unparsable (notably the "none" default) is skipped — into the packed form described in
+// position.h. "bonus" (0/1) = that piece has already used its "captured the interposing blocker"
+// extra check (see CheckStreak::bonusRuleOn). Mirrors csEncodeForProtocol() in the app, read the
 // other way round. Entries are sorted by ascending square so one and the same set always packs to
 // one and the same number, exactly like the app.
 u64 parse_check_streak_root(const std::string& text) {
 
-    std::vector<std::pair<int, int>> items;
+    struct Entry {
+        int  square, count;
+        bool bonus;
+    };
+    std::vector<Entry> items;
 
     for (size_t pos = 0; pos < text.size();)
     {
@@ -78,33 +84,40 @@ u64 parse_check_streak_root(const std::string& text) {
             continue;
 
         // Digits read by hand: this build has exceptions disabled, so std::stoi is not usable here.
-        int count = 0;
-        for (size_t k = 3; k < part.size(); ++k)
+        // The "count" run ends at a second ':' (the optional "bonus" tail) or the end of the part.
+        size_t secondColon = part.find(':', 3);
+        size_t countEnd    = secondColon == std::string::npos ? part.size() : secondColon;
+        int    count       = 0;
+        bool   countOk      = countEnd > 3;
+        for (size_t k = 3; k < countEnd; ++k)
         {
             if (part[k] < '0' || part[k] > '9')
             {
-                count = 0;
+                countOk = false;
                 break;
             }
             count = count * 10 + (part[k] - '0');
         }
-        if (count <= 0)
+        if (!countOk || count <= 0)
             continue;
         if (count > CheckStreak::COUNT_BASE - 1)
             count = CheckStreak::COUNT_BASE - 1;
+        bool bonus = secondColon != std::string::npos && secondColon + 1 < part.size()
+                  && part[secondColon + 1] == '1';
 
-        items.push_back({int(make_square(File(part[0] - 'a'), Rank(part[1] - '0'))), count});
+        items.push_back({int(make_square(File(part[0] - 'a'), Rank(part[1] - '0'))), count, bonus});
     }
 
-    std::sort(items.begin(), items.end());
+    std::sort(items.begin(), items.end(),
+               [](const Entry& a, const Entry& b) { return a.square < b.square; });
 
     u64 code = 0, mult = 1;
     int slot = 0;
-    for (const auto& [square, count] : items)
+    for (const auto& it : items)
     {
         if (slot >= CheckStreak::SLOTS)
             break;
-        code += u64(square * CheckStreak::COUNT_BASE + count) * mult;
+        code += u64((it.square * CheckStreak::COUNT_BASE + it.count) * 2 + (it.bonus ? 1 : 0)) * mult;
         mult *= CheckStreak::DIGIT_BASE;
         ++slot;
     }
@@ -191,6 +204,16 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
     options.add(  //
       "CheckStreak_Limit", Option(2, 1, 20, [](const Option& o) {
           CheckStreak::limit = int(o);
+          return std::nullopt;
+      }));
+
+    // Optional extension (off by default): if a checking piece captures the very piece that had
+    // just interposed on its own check line, and the capture itself still checks, that piece
+    // earns one extra allowed check for the rest of the streak — mirrors checkStreakBonusRuleOn
+    // in the app. See the bonus-detection block in Position::do_move.
+    options.add(  //
+      "CheckStreak_BonusRule", Option(false, [](const Option& o) {
+          CheckStreak::bonusRuleOn = bool(o);
           return std::nullopt;
       }));
 

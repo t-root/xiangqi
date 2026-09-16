@@ -24,13 +24,23 @@ HashPair pieceZobrist(PieceType type, Color color, int square);
 extern i32 g_zobristTurn1, g_zobristTurn2;  // khớp ZOBRIST_TURN1/2 (:1509)
 
 // ===== Chuỗi chiếu: khớp csCountAt/csMaxCount/csMixH1/csMixH2 của app =====
+// digit đã gói = (sq*CS_COUNT_BASE+n)*2+bonus (khớp csDecodeDigit trong rules.h/app) — PHẢI decode
+// đúng công thức này, không phải digit=sq*CS_COUNT_BASE+n cũ, nếu không mọi digit thật sẽ không
+// khớp `sq` và csCountAt luôn trả 0 sai (từng vỡ: rules.h::csAdvanceAfterMove gọi thẳng hàm này để
+// lấy prevN, đọc sai thì cả luật chiếu liên tục lẫn luật cản-ăn đều tính sai).
 // Số nước chiếu liên tiếp của quân đang đứng ở ô `sq`; 0 nếu ô đó không giữ chuỗi. Đọc thẳng trên
 // số đã gói, không dựng mảng — hàm này chạy trong vòng tìm kiếm.
 inline int csCountAt(CsCode code, int sq) {
     while (code > 0) {
         int digit = int(code % CS_DIGIT_BASE);
         code /= CS_DIGIT_BASE;
-        if (digit > 0 && digit / CS_COUNT_BASE == sq) return digit % CS_COUNT_BASE;
+        if (digit > 0) {
+            int bonus = digit % 2;
+            int rest = (digit - bonus) / 2;
+            int n = rest % CS_COUNT_BASE;
+            int s = (rest - n) / CS_COUNT_BASE;
+            if (s == sq) return n;
+        }
     }
     return 0;
 }
@@ -41,7 +51,12 @@ inline int csMaxCount(CsCode code) {
     while (code > 0) {
         int digit = int(code % CS_DIGIT_BASE);
         code /= CS_DIGIT_BASE;
-        if (digit > 0 && digit % CS_COUNT_BASE > best) best = digit % CS_COUNT_BASE;
+        if (digit > 0) {
+            int bonus = digit % 2;
+            int rest = (digit - bonus) / 2;
+            int n = rest % CS_COUNT_BASE;
+            if (n > best) best = n;
+        }
     }
     return best;
 }
