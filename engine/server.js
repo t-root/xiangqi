@@ -202,183 +202,183 @@ function openFirewall(port, label) {
 }
 
 // --- Bridge UCI <-> WebSocket dùng chung cho cả Pikafish và Brute-force -----------------------
-// Chỉ MỘT tiến trình engine dùng chung cho mọi kết nối; nếu để sót một lượt "go" không ai dừng thì
-// engine tính mãi, chiếm hết CPU. Giữ đúng cấu trúc như hai file bridge gốc, chỉ tham số hoá.
+// MỖI kết nối WebSocket (= mỗi tab trình duyệt) có TIẾN TRÌNH ENGINE RIÊNG, tách hẳn khỏi các tab
+// khác — mở nhiều tab thì phân tích song song, không tab nào giành/đá tab nào ra nữa. TRƯỚC ĐÂY cả
+// bridge chỉ có MỘT tiến trình dùng chung cho mọi kết nối: tab mới mở sẽ đóng socket của (các) tab
+// cũ (mã lỗi 4001) rồi mới nhận kết nối mới, vì một tiến trình UCI không tự tách được hai lượt
+// "go"/"position" chồng nhau từ hai tab khác nhau. Đổi lại việc tách riêng: mỗi tab đang mở tốn
+// thêm một tiến trình engine riêng (CPU/RAM cộng dồn theo số tab đang mở) — mở rất nhiều tab cùng
+// lúc thì máy yếu có thể đuối, nhưng đổi lại không còn xung đột engine giữa các tab.
 // crashTag: mã trong dòng "info string <TAG>_CRASHED" mà trang web dò để biết engine vừa chết giữa
 // một lượt tìm kiếm. PHẢI truyền rõ, KHÔNG suy ra từ label: label là chữ hiển thị (đổi tên engine là
 // đổi theo), còn tag là giao thức — hai bên lệch nhau thì app treo mãi không biết engine đã chết.
 function startBridge({ label, crashTag, port, exePath, exeDir }) {
     killPortIfBusy(port);
 
-    let engine = null;
-    const clients = new Set();
-    let searchInFlight = false;
-    let restartRequested = false;
-    let restartTimer = null;
-    let shutdownRequested = false;
-    const queuedCommands = [];
-    const afterSearch = [];
-    let stopSent = false;
+    let sessionSeq = 0;
 
-    function broadcast(line) {
-        for (const ws of clients) {
+    // Một "phiên" = một tiến trình engine riêng, gắn với đúng MỘT kết nối WebSocket (đúng một tab).
+    // Toàn bộ state (searchInFlight, hàng đợi lệnh, cờ restart...) nằm trong closure riêng của phiên
+    // này — không còn biến dùng chung cho cả bridge như bản cũ — nên hai phiên/hai tab không thể
+    // giẫm lên trạng thái tìm kiếm của nhau. tag chỉ để gắn nhãn log, phân biệt tab #1, #2...
+    function createSession(ws, tag) {
+        let engine = null;
+        let searchInFlight = false;
+        let restartRequested = false;
+        let restartTimer = null;
+        let shutdownRequested = false;
+        const queuedCommands = [];
+        const afterSearch = [];
+        let stopSent = false;
+
+        function send(line) {
             if (ws.readyState === ws.OPEN) ws.send(line);
         }
-    }
 
-    function startEngine() {
-        console.log(`Đang khởi động ${label}:`, exePath);
-        let child;
-        try { child = spawn(exePath, [], { cwd: exeDir, windowsHide: true }); }
-        catch (error) {
-            engine = null;
-            restartRequested = false;
-            broadcast(`info string ${crashTag}_CRASHED spawn ${error.code || error.message}`);
-            console.error(`[${label}]`, error);
-            return;
-        }
-        engine = child;
-        restartRequested = false;
-        shutdownRequested = false;
-
-        let buf = '';
-        child.stdout.on('data', (chunk) => {
-            if (engine !== child || shutdownRequested) return;
-            buf += chunk.toString('utf8');
-            const lines = buf.split(/\r?\n/);
-            buf = lines.pop();
-            for (const line of lines) {
-                if (!line.length) continue;
-                if (line.startsWith('bestmove')) {
-                    searchInFlight = false;
-                    stopSent = false;
-                }
-                broadcast(line);
-                if (line.startsWith('bestmove')) {
-                    const pending = afterSearch.splice(0);
-                    for (const command of pending) sendToEngine(command);
-                }
-            }
-        });
-        child.stderr.on('data', (chunk) => {
-            console.error(`[${label} stderr]`, chunk.toString('utf8'));
-        });
-        const onEngineFailure = (code, signal) => {
-            // Nếu đã có lượt mới khởi động thay thế, sự kiện thoát của tiến trình cũ
-            // không được phép xóa handle hoặc kích hoạt restart cho lượt mới.
-            if (engine !== child) return;
-            const wasRequested = shutdownRequested;
-            console.error(`${label} đã thoát (code=${code}, signal=${signal})${wasRequested ? ' — đã dừng theo yêu cầu.' : ' — khởi động lại sau 1 giây.'}`);
-            if (!wasRequested) broadcast(`info string ${crashTag}_CRASHED code=${code} signal=${signal}`);
-            searchInFlight = false;
-            afterSearch.length = 0;
-            stopSent = false;
-            engine = null;
-            if (wasRequested) {
+        function startEngine() {
+            console.log(`[${label} ${tag}] Đang khởi động:`, exePath);
+            let child;
+            try { child = spawn(exePath, [], { cwd: exeDir, windowsHide: true }); }
+            catch (error) {
+                engine = null;
                 restartRequested = false;
-                queuedCommands.length = 0;
+                send(`info string ${crashTag}_CRASHED spawn ${error.code || error.message}`);
+                console.error(`[${label} ${tag}]`, error);
                 return;
             }
-            broadcast(`info string ${label} process exited, restarting...`);
-            restartRequested = true;
-            if (!restartTimer) {
-                restartTimer = setTimeout(() => {
-                    restartTimer = null;
-                    startEngine();
-                    while (queuedCommands.length && engine && !engine.killed) {
-                        sendToEngine(queuedCommands.shift());
+            engine = child;
+            restartRequested = false;
+            shutdownRequested = false;
+
+            let buf = '';
+            child.stdout.on('data', (chunk) => {
+                if (engine !== child || shutdownRequested) return;
+                buf += chunk.toString('utf8');
+                const lines = buf.split(/\r?\n/);
+                buf = lines.pop();
+                for (const line of lines) {
+                    if (!line.length) continue;
+                    if (line.startsWith('bestmove')) {
+                        searchInFlight = false;
+                        stopSent = false;
                     }
-                }, 1000);
+                    send(line);
+                    if (line.startsWith('bestmove')) {
+                        const pending = afterSearch.splice(0);
+                        for (const command of pending) sendToEngine(command);
+                    }
+                }
+            });
+            child.stderr.on('data', (chunk) => {
+                console.error(`[${label} ${tag} stderr]`, chunk.toString('utf8'));
+            });
+            const onEngineFailure = (code, signal) => {
+                // Nếu đã có lượt mới khởi động thay thế, sự kiện thoát của tiến trình cũ
+                // không được phép xóa handle hoặc kích hoạt restart cho lượt mới.
+                if (engine !== child) return;
+                const wasRequested = shutdownRequested;
+                console.error(`${label} ${tag} đã thoát (code=${code}, signal=${signal})${wasRequested ? ' — đã dừng theo yêu cầu.' : ' — khởi động lại sau 1 giây.'}`);
+                if (!wasRequested) send(`info string ${crashTag}_CRASHED code=${code} signal=${signal}`);
+                searchInFlight = false;
+                afterSearch.length = 0;
+                stopSent = false;
+                engine = null;
+                if (wasRequested) {
+                    restartRequested = false;
+                    queuedCommands.length = 0;
+                    return;
+                }
+                send(`info string ${label} process exited, restarting...`);
+                restartRequested = true;
+                if (!restartTimer) {
+                    restartTimer = setTimeout(() => {
+                        restartTimer = null;
+                        startEngine();
+                        while (queuedCommands.length && engine && !engine.killed) {
+                            sendToEngine(queuedCommands.shift());
+                        }
+                    }, 1000);
+                }
+            };
+            // Spawn failures do not emit exit; broken stdin is an asynchronous error.
+            // Both must be handled or Node terminates both engine bridges.
+            child.on('error', error => onEngineFailure(error.code || error.message, null));
+            child.stdin.on('error', error => {
+                if (engine !== child) return;
+                try { child.kill(); } catch (_) {}
+                onEngineFailure(error.code || error.message, null);
+            });
+            child.on('close', onEngineFailure);
+        }
+
+        function forceStopEngine() {
+            const current = engine;
+            shutdownRequested = true;
+            restartRequested = false;
+            queuedCommands.length = 0;
+            afterSearch.length = 0;
+            stopSent = false;
+            if (restartTimer) {
+                clearTimeout(restartTimer);
+                restartTimer = null;
             }
-        };
-        // Spawn failures do not emit exit; broken stdin is an asynchronous error.
-        // Both must be handled or Node terminates both engine bridges.
-        child.on('error', error => onEngineFailure(error.code || error.message, null));
-        child.stdin.on('error', error => {
-            if (engine !== child) return;
-            try { child.kill(); } catch (_) {}
-            onEngineFailure(error.code || error.message, null);
-        });
-        child.on('close', onEngineFailure);
-    }
-
-    function forceStopEngine() {
-        const current = engine;
-        shutdownRequested = true;
-        restartRequested = false;
-        queuedCommands.length = 0;
-        afterSearch.length = 0;
-        stopSent = false;
-        if (restartTimer) {
-            clearTimeout(restartTimer);
-            restartTimer = null;
+            if (!current || current.killed) return;
+            if (searchInFlight) send(`info string ${crashTag}_CRASHED`);
+            searchInFlight = false;
+            console.log(`[${label} ${tag}] dừng hẳn engine của phiên này để không còn tiến trình chạy ngầm.`);
+            try { current.kill(); } catch (e) { /* tiến trình đã thoát */ }
         }
-        if (!current || current.killed) return;
-        if (searchInFlight) broadcast(`info string ${crashTag}_CRASHED`);
-        searchInFlight = false;
-        console.log(`${label}: dừng hẳn engine để không còn tiến trình chạy ngầm.`);
-        try { current.kill(); } catch (e) { /* tiến trình đã thoát */ }
-    }
 
-    function sendToEngine(line) {
-        if (line.trim() === '__force_shutdown__') {
-            forceStopEngine();
-            return;
-        }
-        if (!engine || engine.killed || engine.exitCode !== null || engine.stdin.destroyed) {
-            if (shutdownRequested) {
-                startEngine();
+        function sendToEngine(line) {
+            if (line.trim() === '__force_shutdown__') {
+                forceStopEngine();
+                return;
+            }
+            if (!engine || engine.killed || engine.exitCode !== null || engine.stdin.destroyed) {
+                if (shutdownRequested) {
+                    startEngine();
+                    if (!engine || engine.killed) return;
+                } else if (restartRequested) queuedCommands.push(line);
+                else console.warn(`[${label} ${tag}] chưa sẵn sàng, bỏ qua lệnh:`, line);
                 if (!engine || engine.killed) return;
-            } else if (restartRequested) queuedCommands.push(line);
-            else console.warn(`${label} chưa sẵn sàng, bỏ qua lệnh:`, line);
-            if (!engine || engine.killed) return;
+            }
+            const startsSearch = /^(?:go(?:\s|$)|search\s+(?:slice|resume)(?:\s|$))/.test(line);
+            if (searchInFlight && line !== 'stop' && line !== 'quit') {
+                // Pikafish position frees state still used by its search thread, and
+                // setoption waits for that thread. Wait for stop completion first.
+                afterSearch.push(line);
+                if (!stopSent) { engine.stdin.write('stop\n'); stopSent = true; }
+                return;
+            }
+            if (line === 'stop') stopSent = true;
+            if (startsSearch) searchInFlight = true;
+            engine.stdin.write(line + '\n');
         }
-        const startsSearch = /^(?:go(?:\s|$)|search\s+(?:slice|resume)(?:\s|$))/.test(line);
-        if (searchInFlight && line !== 'stop' && line !== 'quit') {
-            // Pikafish position frees state still used by its search thread, and
-            // setoption waits for that thread. Wait for stop completion first.
-            afterSearch.push(line);
-            if (!stopSent) { engine.stdin.write('stop\n'); stopSent = true; }
-            return;
-        }
-        if (line === 'stop') stopSent = true;
-        if (startsSearch) searchInFlight = true;
-        engine.stdin.write(line + '\n');
-    }
 
-    startEngine();
+        startEngine();
+
+        return { sendToEngine, forceStopEngine };
+    }
 
     const wss = new WebSocketServer({ port });
     wss.on('connection', (ws) => {
-        console.log(`[${label}] Trình duyệt vừa kết nối.`);
-        if (clients.size > 0) {
-            console.log(`[${label}] Đã có ${clients.size} kết nối cũ — đóng hết trước khi nhận kết nối mới.`);
-            for (const old of clients) {
-                try { old.close(4001, 'Một kết nối khác vừa được mở — kết nối này bị đóng.'); } catch (e) { /* bỏ qua */ }
-            }
-            clients.clear();
-            if (searchInFlight) forceStopEngine();
-        }
-        clients.add(ws);
-        ws.on('error', error => console.warn(`[${label}] WebSocket: ${error.message}`));
+        const tag = `#${++sessionSeq}`;
+        console.log(`[${label} ${tag}] Trình duyệt vừa kết nối — khởi động engine riêng cho tab này.`);
+        const session = createSession(ws, tag);
+        ws.on('error', error => console.warn(`[${label} ${tag}] WebSocket: ${error.message}`));
         ws.on('message', (data) => {
-            if (!clients.has(ws)) return;
             for (const line of data.toString('utf8').split(/\r?\n/)) {
-                if (line.trim()) sendToEngine(line.trim());
+                if (line.trim()) session.sendToEngine(line.trim());
             }
         });
         ws.on('close', () => {
-            clients.delete(ws);
-            console.log(`[${label}] Trình duyệt đã ngắt kết nối.`);
-            if (clients.size === 0 && searchInFlight) {
-                console.log(`[${label}] Không còn ai theo dõi — tự dừng lượt tìm kiếm đang dở.`);
-                forceStopEngine();
-            }
+            console.log(`[${label} ${tag}] Trình duyệt đã ngắt kết nối — dừng engine riêng của tab này.`);
+            session.forceStopEngine();
         });
     });
 
     const localIP = getLocalIP();
-    console.log(`Cầu nối ${label} đang chạy tại ws://localhost:${port}`);
+    console.log(`Cầu nối ${label} đang chạy tại ws://localhost:${port} (mỗi tab một engine riêng)`);
     console.log(`  Từ mạng nội bộ: ws://${localIP}:${port}`);
 }
 
