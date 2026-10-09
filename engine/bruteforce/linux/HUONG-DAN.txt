@@ -1,0 +1,86 @@
+HUONG DAN CHAY BRUTE-FORCE TREN LINUX
+=====================================
+
+File: bruteforce-linux-x64
+  - Linux x86-64 (AMD/Intel), lien ket tinh: KHONG can cai g++ hay thu vien nao.
+  - KHONG chay duoc tren may ARM (vi du AWS Graviton, Raspberry Pi, dien thoai).
+  - Dung de tim "chieu het" (mate) cho mot the co. Chi dung 1 luong CPU, khong dung GPU,
+    RAM can rat it. Nen thue may it nhan nhung moi nhan nhanh (vi du AWS c8a.large).
+
+Chuan bi (chi lam 1 lan tren may Linux):
+    chmod +x bruteforce-linux-x64
+
+Neu copy tu Windows len bang scp:
+    scp -i key.pem bruteforce-linux-x64 ubuntu@IP:~/
+    ssh -i key.pem ubuntu@IP
+
+
+CACH 1: CHAY TUONG TAC (thay tien do, go "stop" de dung)
+--------------------------------------------------------
+    ./bruteforce-linux-x64
+
+Roi go tung dong:
+
+    position fen 9/5k3/9/9/5C3/9/9/4K4/2c6/C8 w - - 0 1
+    go budget 10
+
+  - Thay chuoi FEN bang the cua ban. Chu "w" = Do di truoc, "b" = Den di truoc.
+  - "budget 10" = quet toi da 10 nuoc cua ben tan cong. Quet tu muc 1 len dan.
+  - "stop" = dung som va bao ket qua hien co. "quit" = thoat.
+
+
+CACH 2: CHAY MOT LENH, KET QUA GHI RA FILE (hop de chay lau roi dong SSH)
+-------------------------------------------------------------------------
+    nohup bash -c "(printf 'position fen 9/5k3/9/9/5C3/9/9/4K4/2c6/C8 w - - 0 1\ngo budget 10\n'; sleep 14400; printf 'quit\n') | ./bruteforce-linux-x64 > kq.txt 2>&1" &
+
+  - Ket qua ghi vao kq.txt cung thu muc dang dung lenh. Doi ten kq.txt tuy y.
+  - "sleep 14400" = cho toi da 4 gio roi tu thoat. Sua so giay cho phu hop.
+    (BF thoat ngay khi stdin dong, nen can sleep de giu no song tren nen.)
+  - Xem tien do:   tail -f kq.txt
+  - Dung som:      pkill bruteforce-linux-x64
+  - Co the dong SSH, tien trinh van chay (nohup). Vao lai bang ssh roi tail -f kq.txt.
+
+
+CACH DOC KET QUA
+----------------
+Moi muc quet xong in 1 dong, vi du:
+
+    info depth 3 score cp 0 nodes 49206 time 47
+    info depth 4 score mate 4 nodes 455319 time 146 pv a0f0 c1f1 f5g5 f1g1 f0f4 f8f9 g5f5
+    bestmove a0f0
+
+  - "score cp 0"        : o muc nay chua thay chieu het.
+  - "score mate N"      : TIM THAY chieu het trong N nuoc cua ben tan cong.
+  - "pv ..."            : day nuoc di chinh (Do, Den, Do, Den, ...).
+                          Dang UCI: cot a..i trai sang phai, hang 0..9 tu phia Do len.
+  - "bestmove <nuoc>"   : nuoc di dau tien cua ben tan cong.
+  - "info string outcome partial" + "bestmove (none)": het gio, CHUA ket luan.
+  - "info string outcome draw"   + "bestmove (none)": quet can toi muc budget ma
+                          KHONG co chieu het (khong chung minh khong co chieu het o muc sau hon).
+
+Thoi gian: moi muc tang them khoang 7-10 lan. Vi du the kho tren CPU laptop i7-8665U:
+muc 7 ~ 37 giay, muc 8 ~ 6.5 phut, muc 9 ~ 1 gio (uoc tinh). May desktop/cloud hien dai
+nhanh hon khoang 2.5-3.5 lan (uoc tinh).
+
+
+LENH HO TRO
+-----------
+    bruteforce                         in thong tin engine
+    isready                            tra "readyok"
+    position fen <FEN>                 nap the co
+    go budget <N>                      quet can toi muc N (khong gioi han gio)
+    go budget <N> movetime <ms>        nhu tren nhung dung khi het ms (mili giay)
+    go budget <N> from <M>             tiep tuc tu muc M (cac muc truoc da quet xong o lan "go" truoc
+                                       trong CUNG mot phien chay)
+    stop                               dung lan "go" dang chay
+    ucinewgame                         xoa bang bam/lich su
+    quit                               thoat
+
+
+GHI CHU
+-------
+  - Neu "go" chua xong ma dong stdin (het du lieu dau vao), BF se thoat ngay. Vi vay Cach 2
+    dung "sleep" de giu dau vao mo.
+  - File nay duoc dung tu ma nguon engine/bruteforce-src/src boi build-xiangqi.bat (qua WSL).
+    Neu sua ma nguon BF, hay build lai bang build-xiangqi.bat (tat ung dung truoc khi build).
+  - Thu muc linux/ nam canh bruteforce.exe cua Windows nhung app Windows KHONG nap file nay.

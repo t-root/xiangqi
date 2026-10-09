@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.xiangqi.analyzer">
+
+    <!-- Không cần quyền nào: engine chạy ngay trong máy, trang cờ nạp từ bên trong APK. -->
+    <application
+        android:label="Xiangqi Analyzer"
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:hardwareAccelerated="true"
+        android:extractNativeLibs="true"
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+
+        <!-- extractNativeLibs=true: hai engine được đóng gói dưới dạng lib*.so nhưng thực ra là file
+             chạy được; Android bung chúng ra nativeLibraryDir lúc cài, đó là chỗ DUY NHẤT app được
+             phép exec trên Android 10+. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard|uiMode"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

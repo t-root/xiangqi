@@ -1,0 +1,18 @@
+<!doctype html><meta charset="utf-8"><title>BF Web crash regression</title><pre id="result">RUNNING</pre>
+<script src="/bruteforce-web/bruteforce.js"></script>
+<script>
+(async()=>{
+ const lines=[];const result=document.getElementById('result');
+ const mod=await BruteForceWeb({locateFile:p=>'/bruteforce-web/'+p,print:s=>lines.push(s),printErr:console.warn,onAbort:r=>result.textContent='FAIL abort '+r});
+ const send=s=>{const n=mod.lengthBytesUTF8(s)+1,p=mod._malloc(n);try{mod.stringToUTF8(s,p,n);mod._bruteforce_command(p);}finally{mod._free(p);}};
+ const wait=async(start,pred)=>{for(let i=0;i<1000;i++){const hit=lines.slice(start).find(pred);if(hit)return hit;await new Promise(r=>setTimeout(r,10));}throw Error('timeout '+lines.slice(-8).join('\n'));};
+ const fen='9/5k3/9/9/5C3/9/9/4K4/2c6/C8 w - - 0 1';
+ send('position fen '+fen);send('go budget 4 movetime 2000');
+ await wait(0,s=>s==='bestmove a0f0');
+ for(let i=0;i<10;i++){const n=lines.length;send('go budget 60');send('stop');await wait(n,s=>s.startsWith('bestmove'));}
+ let n=lines.length;send('position fen '+fen+' moves zzzz');await wait(n,s=>s.includes('ERROR:'));
+ send('position fen '+fen);send('search create web');
+ n=lines.length;send('search slice web budget 4 movetime 2000');await wait(n,s=>s==='bestmove a0f0');send('search cancel web');
+ result.textContent='PASS BF Web: mate, 10 immediate stops, malformed move, session create/slice/cancel';
+})().catch(e=>document.getElementById('result').textContent='FAIL '+e.stack);
+</script>
