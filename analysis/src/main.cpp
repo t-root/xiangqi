@@ -124,7 +124,7 @@ bool g_workSteal = true;
 bool g_keepAwake = true;   // giữ máy không tự ngủ trong lúc phân tích (Windows: ES_SYSTEM_REQUIRED; màn hình vẫn tắt được)
 // [testphantich] Lưu tiến độ ra đĩa: thư mục (rỗng = tắt), chu kỳ tự lưu (giây, 0 = chỉ lưu khi dừng), cỡ bảng băm.
 std::string g_dataDir;
-int g_autosaveSec = 60;   // chu kỳ tự lưu (giây); thực tế tự giãn ra nếu một lần lưu quá lâu (xem runAnalyze)
+int g_autosaveSec = 600;  // chu kỳ tự lưu (giây); thực tế tự giãn ra nếu một lần lưu quá lâu (xem runAnalyze)
 std::atomic<long long> g_lastSaveMs{0};
 std::atomic<int> g_curLevel{0};     // mức budget đang dò (cho dòng tiến độ)
 std::atomic<bool> g_saving{false};  // đang ghi tiến độ ra đĩa (cho dòng tiến độ)
@@ -2121,7 +2121,7 @@ bool executeCommandLine(const std::string& line) {
             sendLine("option name DataDir type string default");
             sendLine("option name KeepAwake type check default true");
             sendLine("option name ProgressMs type spin default 1000 min 0 max 60000");
-            sendLine("option name AutosaveSec type spin default 60 min 0 max 86400");
+            sendLine("option name AutosaveSec type spin default 600min 0 max 86400");
             sendLine("option name HashBits type spin default 22 min 16 max 26");
             sendLine("option name WitnessLimit type spin default 500000 min 1000 max 50000000");
             sendLine("info string hardware threads " + std::to_string(g_hwThreads));

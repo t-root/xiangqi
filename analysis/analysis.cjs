@@ -317,7 +317,7 @@ const HELP = `Dùng:  node analysis.cjs --fen "<FEN>" [tuỳ chọn]
   --bonus            bật luật "cản rồi bị ăn mà vẫn chiếu" (+1)
   --ktc              đếm theo luật ktc (chạy Tướng khi bị chiếu không tính nước)
   --data <thư mục>   nơi lưu tiến độ (mặc định analysis/data)
-  --autosave <giây>  tự lưu tiến độ mỗi chu kỳ này (mặc định 60, 0 = chỉ lưu khi xong mức/dừng; chu kỳ tự giãn ra nếu tệp lớn)
+  --autosave <giây>  tự lưu tiến độ mỗi chu kỳ này (mặc định 600 = 10 phút, 0 = chỉ lưu khi xong mức/dừng; chu kỳ tự giãn ra nếu tệp lớn)
   --hash-bits <N>    cỡ bảng băm mỗi luồng 2^N ô x 16 byte (16..26, mặc định 22 = 64 MB)
   --witness-limit <N> số "witness" tối đa mỗi luồng để dựng lại tuyến đầy đủ (mặc định 500000, tốn ~70 byte/ô)
   --book             xây SÁCH ĐÁP ÁN cho thế đã có mate (nước thắng của mọi thế trên cây chứng minh) và lưu vào data/analysis.db
@@ -336,7 +336,7 @@ Mã thoát: 0 = tìm thấy chiếu bí, 2 = đã quét xong tới --budget mà 
 
 function parseArgs(argv) {
   const o = { budget: 15, time: 0, threads: 'auto', rule: 'analysis', limit: 2, bonus: false, ktc: false, allowSleep: false, book: false, bookMax: 0, bookDepth: 0, bookDev: 1, guide: false,
-    data: path.join(HERE, 'data'), autosave: 60, hashBits: 22, witnessLimit: 500000, fresh: false, clear: false, list: false, json: false, quiet: false };
+    data: path.join(HERE, 'data'), autosave: 600, hashBits: 22, witnessLimit: 500000, fresh: false, clear: false, list: false, json: false, quiet: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => { if (i + 1 >= argv.length) throw new Error('thiếu giá trị sau ' + a); return argv[++i]; };

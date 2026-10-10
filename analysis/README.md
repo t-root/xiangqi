@@ -63,7 +63,7 @@ Tra nhanh bằng dòng lệnh: `node analysis.cjs --guide --fen "<FEN hiện t�
 | Sự cố | Điều xảy ra |
 |---|---|
 | Xong một mức quét / **tìm thấy mate** | Lưu **ngay lập tức**. |
-| Đang dò dở một mức rất lâu | Tự lưu mỗi **60 giây** (tự giãn ra nếu một lần lưu tốn nhiều giây vì tệp lớn). |
+| Đang dò dở một mức rất lâu | Tự lưu mỗi **10 phút (600 giây)** (tự giãn ra nếu một lần lưu tốn nhiều giây vì tệp lớn). |
 | Ctrl+C, hết giờ | Dừng, lưu rồi thoát. |
 | Đóng cửa sổ, đăng xuất, tắt máy từ hệ điều hành, `kill`/SIGTERM | Engine dừng, **đợi lưu xong** (tối đa 30 giây) rồi mới thoát. |
 | Bị giết cứng (End task, `kill -9`) hoặc **mất điện** | Còn bản lưu gần nhất. Tệp luôn nguyên vẹn: ghi ra tệp tạm, ép xuống đĩa, rồi mới đổi tên thay tệp cũ. |
