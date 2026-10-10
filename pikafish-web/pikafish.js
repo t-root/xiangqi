@@ -49,7 +49,7 @@ var ENVIRONMENT_IS_PTHREAD = ENVIRONMENT_IS_WORKER && globalThis.name == "em-pth
 
 // --pre-jses are emitted after the Module integration code, so that they can
 // refer to Module (if they choose; they can also define Module)
-// include: C:\Users\T-Root\Documents\xiangqi\.build\emscripten-temp\tmpau0lxmkn.js
+// include: C:\Users\T-Root\Downloads\xiangqi\.build\emscripten-temp\tmpei3k_3fs.js
 if (!Module["expectedDataFileDownloads"]) Module["expectedDataFileDownloads"] = 0;
 
 Module["expectedDataFileDownloads"]++;
@@ -67,7 +67,7 @@ Module["expectedDataFileDownloads"]++;
       // web worker
       PACKAGE_PATH = encodeURIComponent(location.pathname.substring(0, location.pathname.lastIndexOf("/")) + "/");
     }
-    var PACKAGE_NAME = "C:/Users/T-Root/Documents/xiangqi/pikafish-web/pikafish.data";
+    var PACKAGE_NAME = "C:/Users/T-Root/Downloads/xiangqi/pikafish-web/pikafish.data";
     var REMOTE_PACKAGE_BASE = "pikafish.data";
     var REMOTE_PACKAGE_NAME = Module["locateFile"] ? Module["locateFile"](REMOTE_PACKAGE_BASE, "") : REMOTE_PACKAGE_BASE;
     var REMOTE_PACKAGE_SIZE = metadata["remote_package_size"];
@@ -137,9 +137,9 @@ Module["expectedDataFileDownloads"]++;
           // canOwn this data in the filesystem, it is a slice into the heap that will never change
           Module["FS_createDataFile"](name, null, data, true, true, true);
         }
-        Module["removeRunDependency"]("datafile_C:/Users/T-Root/Documents/xiangqi/pikafish-web/pikafish.data");
+        Module["removeRunDependency"]("datafile_C:/Users/T-Root/Downloads/xiangqi/pikafish-web/pikafish.data");
       }
-      Module["addRunDependency"]("datafile_C:/Users/T-Root/Documents/xiangqi/pikafish-web/pikafish.data");
+      Module["addRunDependency"]("datafile_C:/Users/T-Root/Downloads/xiangqi/pikafish-web/pikafish.data");
       if (!Module["preloadResults"]) Module["preloadResults"] = {};
       Module["preloadResults"][PACKAGE_NAME] = {
         fromCache: false
@@ -167,7 +167,7 @@ Module["expectedDataFileDownloads"]++;
   });
 })();
 
-// end include: C:\Users\T-Root\Documents\xiangqi\.build\emscripten-temp\tmpau0lxmkn.js
+// end include: C:\Users\T-Root\Downloads\xiangqi\.build\emscripten-temp\tmpei3k_3fs.js
 var programArgs = [];
 
 var thisProgram = "./this.program";

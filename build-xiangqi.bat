@@ -218,20 +218,25 @@ exit /b 1
 
 :cleandist
 if not exist "%DIST_DIR%" exit /b 0
-echo Don sach %DIST_DIR%...
-rd /S /Q "%DIST_DIR%" >nul 2>&1
-if not exist "%DIST_DIR%" exit /b 0
+echo Don sach %DIST_DIR%, GIU dist\android\com.kiwibrowser.browser-* va dist\android\tiktok_auto_reply_android_extension ...
+call :cleandist_run
+if not errorlevel 1 exit /b 0
 echo   Trong dist con file dang bi chiem giu, dong tien trinh lien quan roi xoa lai...
 "%WINDIR%\System32\taskkill.exe" /F /IM XiangqiAnalyzer.exe >nul 2>&1
 "%WINDIR%\System32\taskkill.exe" /F /IM pikafish-bmi2.exe >nul 2>&1
 "%WINDIR%\System32\taskkill.exe" /F /IM bruteforce.exe >nul 2>&1
 "%WINDIR%\System32\timeout.exe" /T 1 /NOBREAK >nul 2>&1
-rd /S /Q "%DIST_DIR%" >nul 2>&1
-if not exist "%DIST_DIR%" exit /b 0
+call :cleandist_run
+if not errorlevel 1 exit /b 0
 echo ERROR: khong xoa sach duoc %DIST_DIR%.
 echo Dong ban XiangqiAnalyzer.exe dang chay va cua so Explorer dang mo thu muc dist roi chay lai.
 pause
 exit /b 1
+
+:cleandist_run
+REM Xoa moi thu trong dist, TRU cac muc duoc giu trong dist\android (khong phai do build tao ra).
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $d=$env:DIST_DIR; $keep=@('com.kiwibrowser.browser-*','tiktok_auto_reply_android_extension'); try { Get-ChildItem -LiteralPath $d -Force | ForEach-Object { if ($_.PSIsContainer -and $_.Name -eq 'android') { Get-ChildItem -LiteralPath $_.FullName -Force | Where-Object { $n=$_.Name; -not ($keep | Where-Object { $n -like $_ }) } | Remove-Item -Recurse -Force } else { Remove-Item -LiteralPath $_.FullName -Recurse -Force } } } catch { exit 1 }"
+exit /b %errorlevel%
 
 #===PIKAFISH-PS===
 # ==========================================================================
@@ -493,7 +498,19 @@ if (-not (Test-Path -LiteralPath $nodeModules) -or -not (Test-Path -LiteralPath 
 }
 
 $distDir = Join-Path $ProjectRoot 'dist'
-if (Test-Path -LiteralPath $distDir) { Remove-Item -LiteralPath $distDir -Recurse -Force }
+# Don dist nhung GIU dist\android\com.kiwibrowser.browser-* va dist\android\tiktok_auto_reply_android_extension (khong do build tao ra).
+$keepInAndroid = @('com.kiwibrowser.browser-*', 'tiktok_auto_reply_android_extension')
+if (Test-Path -LiteralPath $distDir) {
+    Get-ChildItem -LiteralPath $distDir -Force | ForEach-Object {
+        if ($_.PSIsContainer -and $_.Name -eq 'android') {
+            Get-ChildItem -LiteralPath $_.FullName -Force |
+                Where-Object { $n = $_.Name; -not ($keepInAndroid | Where-Object { $n -like $_ }) } |
+                Remove-Item -Recurse -Force
+        } else {
+            Remove-Item -LiteralPath $_.FullName -Recurse -Force
+        }
+    }
+}
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 Write-Host 'Dang dong goi XiangqiAnalyzer.exe...'
 Push-Location $engineDir
