@@ -8,3 +8,10 @@ engine/certs/
 
 android/build/
 dist/android/
+
+# analysis: bo du lieu nang, van push dist/analysis.exe
+analysis/data/
+analysis/bin/
+analysis/test/.tmp-*/
+analysis/dist/*
+!analysis/dist/analysis.exe
