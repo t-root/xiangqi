@@ -26,7 +26,7 @@ node tests/cache-logic-smoke-test.js
 | File/thư mục | Mục đích |
 |---|---|
 | `crash-regression.cjs` | 22 nhóm kiểm tra BF/Pikafish, gồm nước gốc của proof hòa, Threads/hash BF, giữ TT qua các mức budget, EOF, stop, parser, cache session, lỗi cầu nối và restart qua WebSocket thật |
-| `composite-regression.cjs` | 8 nhóm kiểm tra phối hợp native/Web, cả hai engine được gọi, dự trữ RAM BF và loại kết quả cũ |
+| `composite-regression.cjs` | Kiểm tra phối hợp native/Web, gia hạn Brute-force bằng warm session, cache miss, dự trữ RAM BF và loại kết quả cũ |
 | `analysis-progress-visibility.cjs` | Kiểm tra parser/render telemetry Hash/RAM của Brute-force và trạng thái dòng engine sau phân tích |
 | `cache-logic-smoke-test.js` | Kiểm tra trạng thái cache, mức chứng minh, retry và run ID |
 | `engine-thread-settings.cjs` | Kiểm tra chính sách luồng cố định: Phân tích dùng 1 luồng; Duyệt/điều khiển dùng 2 luồng cho mỗi engine |

@@ -4,8 +4,16 @@ import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.view.Gravity;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputConnection;
+import android.view.inputmethod.InputConnectionWrapper;
+import android.view.inputmethod.InputMethodManager;
+import android.view.inputmethod.InputContentInfo;
+import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.webkit.ConsoleMessage;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.ValueCallback;
@@ -21,6 +29,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -35,6 +45,7 @@ public class MainActivity extends Activity {
 
     private WebView webView;
     private WsBridge bridge;
+    private ImagePasteInput imagePasteInput;
     private String shimJs = "";
     private ValueCallback<Uri[]> pendingFileCallback;
 
@@ -46,9 +57,14 @@ public class MainActivity extends Activity {
 
         try { shimJs = readAssetText("xq-ws-shim.js"); } catch (IOException ignored) { /* thiếu shim: engine sẽ không nối được */ }
 
+        FrameLayout root = new FrameLayout(this);
         webView = new WebView(this);
-        webView.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        setContentView(webView);
+        root.addView(webView, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        imagePasteInput = new ImagePasteInput();
+        FrameLayout.LayoutParams inputParams = new FrameLayout.LayoutParams(1, 1, Gravity.BOTTOM | Gravity.START);
+        root.addView(imagePasteInput, inputParams);
+        setContentView(root);
         WebView.setWebContentsDebuggingEnabled(true); // chrome://inspect khi cần gỡ lỗi
 
         WebSettings s = webView.getSettings();
@@ -61,7 +77,20 @@ public class MainActivity extends Activity {
         s.setSupportZoom(false);
         s.setBuiltInZoomControls(false);
 
-        bridge = new WsBridge(getApplicationContext(), webView);
+        bridge = new WsBridge(getApplicationContext(), webView, this::requestClipboardImagePaste);
+        imagePasteInput.setListener(new ImagePasteInput.Listener() {
+            @Override
+            public void onImage(String mime, byte[] data) {
+                bridge.deliverClipboardImage(mime, data);
+                hideClipboardImageInput();
+            }
+
+            @Override
+            public void onError(String message) {
+                bridge.reportClipboardImageError(message);
+                hideClipboardImageInput();
+            }
+        });
         webView.addJavascriptInterface(bridge, "XQBridge");
 
         webView.setWebViewClient(new WebViewClient() {
@@ -145,6 +174,89 @@ public class MainActivity extends Activity {
             return uris;
         }
         return data.getData() != null ? new Uri[]{data.getData()} : null;
+    }
+
+    private void requestClipboardImagePaste() {
+        runOnUiThread(() -> {
+            imagePasteInput.requestFocus();
+            InputMethodManager inputMethod = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+            if (inputMethod != null) inputMethod.showSoftInput(imagePasteInput, InputMethodManager.SHOW_IMPLICIT);
+        });
+    }
+
+    private void hideClipboardImageInput() {
+        runOnUiThread(() -> {
+            InputMethodManager inputMethod = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+            if (inputMethod != null) inputMethod.hideSoftInputFromWindow(imagePasteInput.getWindowToken(), 0);
+            webView.requestFocus();
+        });
+    }
+
+    private final class ImagePasteInput extends EditText {
+        interface Listener {
+            void onImage(String mime, byte[] data);
+            void onError(String message);
+        }
+
+        private final ExecutorService reader = Executors.newSingleThreadExecutor();
+        private Listener listener;
+
+        ImagePasteInput() {
+            super(MainActivity.this);
+            setAlpha(0.01f);
+            setSingleLine(true);
+            setTextSize(1);
+            setFocusable(true);
+            setFocusableInTouchMode(true);
+        }
+
+        void setListener(Listener listener) {
+            this.listener = listener;
+        }
+
+        @Override
+        public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
+            InputConnection connection = super.onCreateInputConnection(outAttrs);
+            if (connection == null) return null;
+            outAttrs.contentMimeTypes = new String[]{"image/*"};
+            return new InputConnectionWrapper(connection, false) {
+                @Override
+                public boolean commitContent(InputContentInfo content, int flags, Bundle opts) {
+                    if (content == null || content.getDescription() == null
+                            || !content.getDescription().hasMimeType("image/*")) {
+                        return super.commitContent(content, flags, opts);
+                    }
+                    try {
+                        if ((flags & InputConnection.INPUT_CONTENT_GRANT_READ_URI_PERMISSION) != 0) content.requestPermission();
+                    } catch (Exception e) {
+                        Listener current = listener;
+                        if (current != null) current.onError("Bàn phím không cấp quyền đọc ảnh: " + e.getMessage());
+                        return true;
+                    }
+                    Uri uri = content.getContentUri();
+                    String mime = content.getDescription().getMimeType(0);
+                    reader.execute(() -> readCommittedImage(uri, mime, content, flags));
+                    return true;
+                }
+            };
+        }
+
+        private void readCommittedImage(Uri uri, String mime, InputContentInfo content, int flags) {
+            try (InputStream in = getContentResolver().openInputStream(uri);
+                 ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                if (in == null) throw new IOException("Không mở được ảnh bàn phím gửi.");
+                byte[] buffer = new byte[16 * 1024];
+                int count;
+                while ((count = in.read(buffer)) != -1) out.write(buffer, 0, count);
+                Listener current = listener;
+                if (current != null) current.onImage(mime, out.toByteArray());
+            } catch (Exception e) {
+                Listener current = listener;
+                if (current != null) current.onError("Không đọc được ảnh bàn phím gửi: " + e.getMessage());
+            } finally {
+                if ((flags & InputConnection.INPUT_CONTENT_GRANT_READ_URI_PERMISSION) != 0) content.releasePermission();
+            }
+        }
     }
 
     @Override

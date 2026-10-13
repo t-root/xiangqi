@@ -178,24 +178,62 @@ if (isPkg) {
 // Windows-only (netstat/taskkill), dùng đường dẫn đầy đủ tới System32 vì một số shell (Git Bash)
 // không có System32 sẵn trong PATH.
 const SYSTEM32 = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32');
-function killPortIfBusy(port) {
-    let out;
-    try {
-        out = execSync(
-            `"${SYSTEM32}\\netstat.exe" -ano -p tcp | "${SYSTEM32}\\findstr.exe" :${port} | "${SYSTEM32}\\findstr.exe" LISTENING`,
-            { encoding: 'utf8' });
-    } catch (e) {
-        return;  // findstr không khớp dòng nào -> cổng đang rảnh.
-    }
+
+function getListeningPids(port) {
     const pids = new Set();
-    for (const line of out.split(/\r?\n/)) {
-        const parts = line.trim().split(/\s+/);
-        const pid = parts[parts.length - 1];
-        if (pid && /^\d+$/.test(pid) && pid !== String(process.pid)) pids.add(pid);
+
+    if (process.platform === 'win32') {
+        let out;
+        try {
+            out = execSync(
+                `"${SYSTEM32}\\netstat.exe" -ano -p tcp | "${SYSTEM32}\\findstr.exe" :${port} | "${SYSTEM32}\\findstr.exe" LISTENING`,
+                { encoding: 'utf8' });
+        } catch (e) {
+            return pids; // Cổng đang rảnh hoặc netstat không khớp.
+        }
+        for (const line of out.split(/\r?\n/)) {
+            const parts = line.trim().split(/\s+/);
+            const pid = parts[parts.length - 1];
+            if (pid && /^\d+$/.test(pid) && pid !== String(process.pid)) pids.add(pid);
+        }
+        return pids;
     }
+
+    const candidates = [
+        `lsof -nP -t -iTCP:${port} -sTCP:LISTEN`,
+        `fuser -n tcp ${port} 2>/dev/null`,
+        `ss -lntp '( sport = :${port} )' 2>/dev/null`,
+    ];
+
+    for (const command of candidates) {
+        try {
+            const out = execSync(command, { encoding: 'utf8', stdio: 'pipe' }).trim();
+            if (!out) continue;
+            for (const token of out.split(/\s+/)) {
+                if (/^\d+$/.test(token) && token !== String(process.pid)) pids.add(token);
+            }
+            if (pids.size > 0) return pids;
+        } catch (e) {
+            // Không có công cụ tương ứng hoặc cổng đang rảnh.
+        }
+    }
+
+    return pids;
+}
+
+function killPortIfBusy(port) {
+    const pids = getListeningPids(port);
     for (const pid of pids) {
         console.log(`Cổng ${port} đang bị chiếm (PID ${pid}) — đang tắt để khởi động lại không xung đột...`);
-        try { execSync(`"${SYSTEM32}\\taskkill.exe" /F /PID ${pid}`); } catch (e) { /* có thể vừa tự thoát, bỏ qua */ }
+        try {
+            if (process.platform === 'win32') {
+                execSync(`"${SYSTEM32}\\taskkill.exe" /F /PID ${pid}`);
+            } else {
+                try { execSync(`kill -9 ${pid}`); } catch (e) { execSync(`kill ${pid}`); }
+            }
+        } catch (e) {
+            // Có thể vừa tự thoát, bỏ qua.
+        }
     }
     if (pids.size > 0) {
         const sab = new SharedArrayBuffer(4);
@@ -205,6 +243,10 @@ function killPortIfBusy(port) {
 
 // --- Mở Firewall cho các cổng cần thiết ---------------------------------------------------
 function openFirewall(port, label) {
+    if (process.platform !== 'win32') {
+        console.log(`ℹ️ Bỏ qua mở Firewall trên ${process.platform} cho cổng ${port} (${label})`);
+        return;
+    }
     try {
         const ruleName = `Xiangqi ${label} ${port}`;
         execSync(

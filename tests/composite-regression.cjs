@@ -57,7 +57,7 @@ async function test(name,fn){await fn();checks++;console.log('PASS '+name);}
   const calls=[];
   const c=load({guideActive:true,document:{getElementById:()=>({})},guideToken:0,guideSide:'black',currentPlayer:'black',
    gameOver:false,guideAttacker:'red',guideMovesTarget:6,guideMaxMoves:6,board:[],BRAIN_IDS:Object.keys(labels),
-   syncCheckStreakRestrictedForGame(){},prioritizeFullCacheCurrentBranch(){},fullCacheConstrained:()=>false,
+   syncCheckStreakRestrictedForGame(){},fullCacheConstrained:()=>false,
    guideMovesRemaining:()=>6,recallAnalysisSeedMove:()=>null,currentCompletedGuideAnswer:()=>null,
    stopBackgroundCacheForLive(){},pendingGuideEngineJob:()=>null,
    refreshPlayGuideMoveComposite:brain=>calls.push(brain)},['refreshGuide']);
@@ -65,6 +65,100 @@ async function test(name,fn){await fn();checks++;console.log('PASS '+name);}
    c.guideEngine=brain;c.guideMode=mode;c.refreshGuide();assert.equal(calls.at(-1),brain);
   }
   assert.equal(calls.length,10);
+ });
+ await test('live cache miss cancels background work and starts the selected engine immediately',()=>{
+  const calls=[];
+  const c=load({guideActive:true,document:{getElementById:()=>({})},guideToken:0,guideSide:'red',currentPlayer:'red',
+   gameOver:false,guideAttacker:null,guideMovesTarget:0,guideMaxMoves:0,guideMode:'win',guideEngine:'bruteforce',
+   board:[],liveCheckStreak:{red:0,black:0},BRAIN_IDS:['bruteforce'],syncCheckStreakRestrictedForGame(){},
+   fullCacheConstrained:()=>true,fullCacheMovesAt:()=>[{}],guideMovesRemaining:()=>0,
+   recallAnalysisSeedMove:()=>null,currentCompletedGuideAnswer:()=>null,
+   stopBackgroundCacheForLive:brain=>calls.push(`stop:${brain}`),pendingGuideEngineJob:()=>null,
+   refreshWinGuideMove:()=>calls.push('live')},['refreshGuide']);
+  c.refreshGuide();
+  assert.deepEqual(calls,['stop:bruteforce','live']);
+ });
+ await test('Brute-force timeout can resume warm slices and releases its session',async()=>{
+  const commands=[],slices=[],asks=[];
+  const results=[
+   {moveStr:null,info:{outcomeHint:'partial',depth:2}},
+   {moveStr:'a0a1',info:{outcomeHint:'mate',scoreType:'mate',scoreVal:3,depth:3}}
+  ];
+  const c=load({Date,Math,BF_STARTUP_TIMEOUT_MS:1000,
+   waitForBruteForceLine:async()=>`info string search created ${commands[0]?.split(' ')[2]} continuation warm`,
+   runBruteForceGo:async(_ws,cmd)=>{slices.push(cmd);return results.shift();}},['runBruteForceAnalysisWithTimeout']);
+  const ws={send:command=>commands.push(command)};
+  const result=await c.runBruteForceAnalysisWithTimeout(ws,5,1000,()=>{},
+   async info=>{asks.push(info.depth);return 2500;},()=>false);
+  assert.equal(result.moveStr,'a0a1');
+  assert.equal(asks.length,1);
+  assert.equal(slices.length,2);
+  assert(slices[0].includes('budget 5 movetime 1000'));
+  assert(slices[1].includes('budget 5 movetime 2500'));
+  assert.match(commands.at(-1),/^search cancel analysis-/);
+ });
+ await test('Brute-force timeout stop returns partial result without retrying',async()=>{
+  let asks=0;
+  const c=load({Date,Math,BF_STARTUP_TIMEOUT_MS:1000,
+   waitForBruteForceLine:async()=>`info string search created ${Math.random().toString(36)} continuation warm`,
+   runBruteForceGo:async()=>({moveStr:null,info:{outcomeHint:'partial'}})},['runBruteForceAnalysisWithTimeout']);
+  const result=await c.runBruteForceAnalysisWithTimeout({send(){}},4,1000,()=>{},
+   async()=>{asks++;return null;},()=>false);
+  assert.equal(result.info.outcomeHint,'partial');
+  assert.equal(asks,1);
+ });
+ await test('composite Brute-force probe uses the resumable timeout adapter',async()=>{
+  const ws={send(){}},events=[];
+  const answer={moveStr:'a0a1',info:{depth:3,scoreType:'mate',scoreVal:2}};
+  const askForMoreTime=async info=>{events.push(`prompt:${info.depth}`);return 2500;};
+  const shouldStop=()=>false;
+  const c=load({Date,analysisCancelled:false,PIKAFISH_WEB_HASH_MB:1024,
+   buildAnalysisEnginePositionState:()=>({}),buildEnginePositionState:()=>({
+    positionCommand:'position fen snapshot',rootCheckStreak:{}
+   }),getAnalysisEngineThreadCount:()=>1,boardToXiangqiFen:()=> 'fen',
+   prepareBruteForceQuery:async()=>ws,
+   runBruteForceAnalysisWithTimeout:async(_ws,budget,timeLimit,onInfo,ask,stop)=>{
+    events.push(`slice:${budget}:${timeLimit}`);
+    assert.equal(stop,shouldStop);
+    onInfo({depth:2});
+    const extension=await ask({depth:2});
+    events.push(`extend:${extension}`);
+    return answer;
+   }},['probeBruteForceAnalysis']);
+  const result=await c.probeBruteForceAnalysis(false,[], 'red',true,7,1200,
+   info=>events.push(`info:${info.depth}`),askForMoreTime,shouldStop);
+  assert.equal(result.moveStr,'a0a1');
+  assert.deepEqual(events,['slice:7:1200','info:2','prompt:2','extend:2500','info:3']);
+ });
+ await test('Brute-force time prompt pauses elapsed time and resumes the countdown only on extension',async()=>{
+  let prompt;
+  const compositeState={};
+  const c=load({Date,analysisElapsedNowMs:()=>5200,analysisRunning:true,analysisElapsedBankedMs:0,
+   analysisTimeLimitMs:5000,analysisCountdownTimer:null,analysisCancelled:false,
+   compositeAnalysisStatus:compositeState,
+   analysisDepthRed:0,analysisDepthBlack:0,
+   pendingAnalysisResume:null,pendingAnalysisStop:null,stopEarlyBtn:{style:{}},
+   document:{getElementById:()=>({style:{}})},stopAnalysisTimersOnly(){},
+   clearPendingAnalysisPrompt(){},
+   showAnalysisTimeoutPrompt:(_el,info,seconds)=>{prompt={info,seconds};},
+   setInterval:()=>17,updateAnalysisProgressUI(){}},['waitForBruteForceAnalysisTime']);
+  const waiting=c.waitForBruteForceAnalysisTime({},30);
+  assert.equal(c.analysisRunning,false);
+  assert.equal(c.analysisElapsedBankedMs,5200);
+  assert.equal(compositeState.waitingForBruteForceTime,true);
+  assert.equal(prompt.seconds,30);
+  c.pendingAnalysisResume(30000);
+  assert.equal(await waiting,30000);
+  assert.equal(compositeState.waitingForBruteForceTime,false);
+  assert.equal(c.analysisRunning,true);
+  assert.equal(c.analysisTimeLimitMs,35200);
+  assert.equal(c.analysisCountdownTimer,17);
+ });
+ await test('composite progress updates preserve the Brute-force extension prompt',()=>{
+  const resultEl={innerHTML:'extension prompt'};
+  const c=load({compositeAnalysisStatus:{waitingForBruteForceTime:true}},['renderCompositeAnalysisProgress']);
+  assert.equal(c.renderCompositeAnalysisProgress(resultEl),true);
+  assert.equal(resultEl.innerHTML,'extension prompt');
  });
  for(const combo of ['nativecombo','webcombo']) {
   await test(combo+': both start before either finishes; early result keeps peer running',async()=>{

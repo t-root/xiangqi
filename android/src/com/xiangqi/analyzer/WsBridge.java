@@ -1,15 +1,22 @@
 package com.xiangqi.analyzer;
 
 import android.content.Context;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Base64;
 import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
 import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -32,6 +39,7 @@ final class WsBridge {
 
     private final Context ctx;
     private final WebView webView;
+    private final Runnable requestImagePaste;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ConcurrentHashMap<Integer, EngineSession> sessions = new ConcurrentHashMap<>();
     private final CountDownLatch filesReady = new CountDownLatch(1);
@@ -40,9 +48,10 @@ final class WsBridge {
     private final List<Object[]> pending = new ArrayList<>();
     private boolean flushScheduled = false;
 
-    WsBridge(Context ctx, WebView webView) {
+    WsBridge(Context ctx, WebView webView, Runnable requestImagePaste) {
         this.ctx = ctx;
         this.webView = webView;
+        this.requestImagePaste = requestImagePaste;
         Thread t = new Thread(this::prepareFiles, "xq-prepare-engines");
         t.setDaemon(true);
         t.start();
@@ -102,6 +111,88 @@ final class WsBridge {
     }
 
     // ---- API gọi từ JS (chạy trên luồng JavaBridge, không phải luồng giao diện) -----------------
+    @JavascriptInterface
+    public String readClipboardImage() {
+        try {
+            ClipboardManager clipboard = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
+            if (clipboard == null || !clipboard.hasPrimaryClip()) {
+                return clipboardImageError("Bộ nhớ đệm đang trống.");
+            }
+            ClipData clip = clipboard.getPrimaryClip();
+            if (clip == null) return clipboardImageError("Bộ nhớ đệm đang trống.");
+
+            for (int i = 0; i < clip.getItemCount(); i++) {
+                Uri uri = clip.getItemAt(i).getUri();
+                if (uri == null) continue;
+                String mime = ctx.getContentResolver().getType(uri);
+                if (mime == null && clip.getDescription() != null) {
+                    for (int j = 0; j < clip.getDescription().getMimeTypeCount(); j++) {
+                        String candidate = clip.getDescription().getMimeType(j);
+                        if (candidate.startsWith("image/")) {
+                            mime = candidate;
+                            break;
+                        }
+                    }
+                }
+                if (mime == null || !mime.startsWith("image/")) continue;
+
+                try (InputStream in = ctx.getContentResolver().openInputStream(uri);
+                     ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                    if (in == null) throw new IOException("Không mở được ảnh trong bộ nhớ đệm.");
+                    byte[] buffer = new byte[16 * 1024];
+                    int count;
+                    while ((count = in.read(buffer)) != -1) out.write(buffer, 0, count);
+                    return new JSONObject()
+                            .put("mime", mime)
+                            .put("data", Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP))
+                            .toString();
+                }
+            }
+            return clipboardImageError("Bộ nhớ đệm gần đây không có ảnh.");
+        } catch (Exception e) {
+            Log.w(TAG, "không đọc được ảnh trong bộ nhớ đệm", e);
+            return clipboardImageError("Không đọc được ảnh từ bộ nhớ đệm: " + e.getMessage());
+        }
+    }
+
+    private static String clipboardImageError(String message) {
+        try {
+            return new JSONObject().put("error", message).toString();
+        } catch (JSONException e) {
+            return "{\"error\":\"Không thể đọc bộ nhớ đệm.\"}";
+        }
+    }
+
+    @JavascriptInterface
+    public void requestClipboardImagePaste() {
+        requestImagePaste.run();
+    }
+
+    void deliverClipboardImage(String mime, byte[] data) {
+        try {
+            String result = new JSONObject()
+                    .put("mime", mime)
+                    .put("data", Base64.encodeToString(data, Base64.NO_WRAP))
+                    .toString();
+            String script = "window.handleNativeClipboardImage && window.handleNativeClipboardImage("
+                    + JSONObject.quote(result) + ")";
+            webView.post(() -> webView.evaluateJavascript(script, null));
+        } catch (JSONException e) {
+            Log.e(TAG, "không đóng gói được ảnh từ bàn phím", e);
+        }
+    }
+
+    void reportClipboardImageError(String message) {
+        try {
+            String result = new JSONObject().put("error", message).toString();
+            String script = "window.handleNativeClipboardImage && window.handleNativeClipboardImage("
+                    + JSONObject.quote(result) + ")";
+            webView.post(() -> webView.evaluateJavascript(script, null));
+        } catch (JSONException e) {
+            Log.e(TAG, "không đóng gói được lỗi ảnh từ bàn phím", e);
+        }
+    }
+
     @JavascriptInterface
     public void open(int id, String kind) {
         try { filesReady.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
