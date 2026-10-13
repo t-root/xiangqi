@@ -4,6 +4,7 @@ const onlyLogic=process.argv.includes('--logic');
 const suite=onlyLogic?['composite-regression.cjs','cache-logic-smoke-test.js']
     :['crash-regression.cjs','composite-regression.cjs','cache-logic-smoke-test.js'];
 suite.push('pikafish-resources.cjs');
+suite.push('engine-thread-settings.cjs');
 if(!onlyLogic)suite.push('pikafish-ktc.cjs');
 suite.push('pikafish-cache-order.cjs');
 suite.push('pikafish-cache-adapter.cjs');

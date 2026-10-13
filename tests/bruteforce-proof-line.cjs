@@ -19,6 +19,8 @@ assert.ok(refineSource, 'missing refineWorstCaseLine fixture');
 // refineWorstCaseLineEngineWeb đã gộp vào refineWorstCaseLine(..., useWeb): một hàm cho cả Native và Web.
 assert.ok(finishSource, 'missing finishAnalysis fixture');
 assert.ok(defenseSource, 'missing refreshDefenseGuideMoveBruteForce fixture');
+assert.equal(defenseSource.includes('đang dựng nước thủ'), false,
+  'live guidance must not show the obsolete numbered holding-move scan');
 assert.ok(startGuideSource, 'missing startGuideSession fixture');
 assert.ok(offerGuideSource, 'missing offerWinningGuide fixture');
 assert.ok(prefetchSource, 'missing prefetchBranchBruteForce fixture');
@@ -59,7 +61,7 @@ async function run(end, budget, skip = false) {
   const move = { from: {row:0,col:0}, to:{row:0,col:1} };
   const ws = {send:s=>commands.push(s)};
   const c = vm.createContext({MATE_MAX_PLY:128, worstLineToken:1, checkStreakRuleOn:false,
-    detectHardwareConcurrency:()=>2, prepareBruteForceQuery:async()=>ws,
+    getAnalysisEngineThreadCount:()=>1, prepareBruteForceQuery:async()=>ws,
     cloneBoard:b=>Object.assign([[{},null]], {ply:b.ply||0}),
     generateLegalMoves:b=>b.ply>=end?[]:[move],
     csEncodeForProtocol:String, boardToXiangqiFen:(b,s)=>`${b.ply}/${s}`,

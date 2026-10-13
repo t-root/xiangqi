@@ -90,7 +90,7 @@ for(const web of [false,true])await asyncTest(`Pikafish ${web?'Web':'Native'} mo
   const c=context();let s=fixture(c);for(const m of [a,b,capture])s=c.buildHypotheticalStateAfterMove(s,m);
   c.board=s.board;c.currentPlayer=s.side;c.installEngineHistory(s);
   const commands=[],ws={send:x=>commands.push(x),addEventListener(){},removeEventListener(){}};
-  Object.assign(c,{detectHardwareConcurrency:()=>2,
+  Object.assign(c,{getGameplayEngineThreadCount:()=>2,
    preparePikafishQuery:async()=>ws,preparePikafishWebQuery:async()=>{},pikafishAttachHandler(){},pikafishDetachHandler(){},
    pikafishWebSend:x=>commands.push(x),
    pikafishWebRunGoLegal:(m,budget)=>{commands.push('go movetime '+budget);return new Promise(()=>{});}});

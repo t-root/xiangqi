@@ -6,7 +6,8 @@ const vm = require('node:vm');
 const {EventEmitter} = require('node:events');
 const parser = require('../engine/node_modules/@babel/parser');
 const engineDir = path.resolve(__dirname, '../engine');
-const executable = path.resolve(process.argv[2] || path.join(engineDir, 'bruteforce-src/src/bruteforce.exe'));
+const executable = path.resolve(process.argv[2] || process.env.BRUTEFORCE_TEST_EXE ||
+  path.join(engineDir, 'bruteforce-src/src/bruteforce.exe'));
 const fen = '9/5k3/9/9/5C3/9/9/4K4/2c6/C8 w - - 0 1';
 const opening = 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1';
 let passed = 0;
@@ -57,6 +58,46 @@ function bridgeFixture() {
   return {children,timers,connect};
 }
 (async () => {
+  await test('two-thread mate search allocates the configured shared hash budget', async () => {
+    const p=launch();
+    p.send('bruteforce');
+    await p.wait(s=>s==='bruteforceok');
+    p.send(`setoption name Threads value 2\nsetoption name HashReserveMiB value 1024\nposition fen ${opening}\ngo budget 1 movetime 100`);
+    const allocation=await p.wait(s=>s.includes('hash allocated'));
+    assert.match(allocation,/initialTargetMiB=1024 threads=2 growthChunkMiB=1024 thresholdPercent=90/);
+    const allocatedMiB=Number(allocation.match(/allocatedMiB=(\d+)/)[1]);
+    assert(allocatedMiB>0&&allocatedMiB<=1024);
+    await p.wait(s=>s.startsWith('bestmove'));
+    await p.finish();
+  });
+  await test('mate search reports live RAM/hash and node telemetry', async () => {
+    const p=launch();
+    p.send('bruteforce');
+    await p.wait(s=>s==='bruteforceok');
+    p.send(`setoption name Threads value 2\nsetoption name HashReserveMiB value 1024\nposition fen ${opening}\ngo budget 1 movetime 250`);
+    const progress=await p.wait(s=>s.startsWith('info string progress ')&&/nodes=[1-9]\d*/.test(s));
+    assert.match(progress,/level=\d+ nodes=\d+ nps=\d+ hashFillTenths=\d+ hashAllocatedMiB=\d+ hashMaxMiB=\d+ hashLevel=\d+ elapsedMs=\d+ saving=0/);
+    await p.wait(s=>s.startsWith('bestmove'));
+    await p.finish();
+  });
+  await test('proven hold returns its root move from the same search', async () => {
+    const p=launch();
+    p.send(`position fen ${opening}\ngo budget 1`);
+    await p.wait(s=>s==='info string outcome draw');
+    const best=await p.wait(s=>s.startsWith('bestmove '));
+    const move=best.slice('bestmove '.length);
+    assert.match(move,/^[a-i][0-9][a-i][0-9]$/,
+      'a completed hold proof must return a usable root move');
+    p.send(`position fen ${opening} moves ${move}\ngo budgets red 0 black 1`);
+    await p.wait(s=>s==='info string outcome draw');
+    await p.wait(s=>s.startsWith('bestmove '));
+    p.send(`position fen ${opening}\ngo budgets red 1 black 1`);
+    await p.wait(s=>s==='info string outcome draw');
+    const pairBest=await p.wait(s=>s.startsWith('bestmove '));
+    assert.match(pairBest,/^bestmove [a-i][0-9][a-i][0-9]$/,
+      'an asymmetric-budget hold proof must return its root move too');
+    await p.finish();
+  });
   await test('EOF joins live worker', async () => { const p=launch(); await p.finish(`position fen ${opening}\ngo budget 60\n`); });
   await test('immediate stop is never overwritten (40 searches)', async () => {
     const p=launch(); const t=Date.now();
@@ -109,6 +150,23 @@ function bridgeFixture() {
     for(let i=0;i<40&&!done;i++) { const n=p.lines.length;p.send('search slice warm budget 4 movetime 40');
       const best=await p.wait(s=>s.startsWith('bestmove'),4000,n);done=best==='bestmove a0f0'; }
     assert(done,'warm search must converge to mate');await p.finish();
+  });
+  await test('TT entries survive completed budget transitions in warm sessions', async () => {
+    const p=launch();p.send(`position fen ${fen}\nsearch create cache`);
+    await p.wait(s=>s==='info string search created cache continuation warm');
+    let n=p.lines.length;p.send('search slice cache budget 1');
+    await p.wait(s=>s.startsWith('bestmove'),5000,n);
+    const first=p.lines.slice(n).find(s=>s.startsWith('info string session warm '));
+    assert(first,'first budget must report warm-session cache usage');
+    const firstUsed=Number(first.match(/ttUsed=(\d+)/)?.[1]);
+    assert(firstUsed>0,'first completed budget must populate the transposition table');
+
+    n=p.lines.length;p.send('search slice cache budget 2');
+    const transition=await p.wait(s=>s.startsWith('info string session cache level=2 '),5000,n);
+    assert.equal(Number(transition.match(/retainedSlots=(\d+)/)?.[1]),firstUsed,
+      'the second budget must begin with the first budget table intact');
+    await p.wait(s=>s.startsWith('bestmove'),5000,n);
+    await p.finish();
   });
   await test('bridge catches spawn failure without duplicate restart', () => {
     const f=bridgeFixture(),ws=f.connect(),c=f.children[0];c.emit('error',{code:'ENOENT'});c.emit('close',-4058,null);

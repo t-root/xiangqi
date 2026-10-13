@@ -8,6 +8,7 @@ for(const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi))for(const 
  const calls=[],timers=new Map(); let nextTimer=0;
  const engineJob={activeRunId:1,lastDepth:0};
  const c=vm.createContext({
+  getAnalysisEngineThreadCount:()=>1,
   guideAttacker:'red',PIKAFISH_CACHE_STOP_GRACE_MS:1,setTimeout:fn=>{const id=++nextTimer;timers.set(id,fn);return id;},clearTimeout:id=>timers.delete(id),
   pikafishCacheBlacklist:{pikafish:new Map(),pikafishweb:new Map()},engineCacheKey:(engine,_,horizon)=>`${engine}/${horizon}`,
   cacheBudgetsRemaining:()=>3,ensureGuideEngineJob:()=>engineJob,
@@ -53,7 +54,7 @@ for(const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi))for(const 
   logEngineStateSemantics:()=>({positionCommand:'position fen test'}),
   beginCacheAttempt:()=>600,waitCacheRetryWindow:async()=>true,
   cacheAttemptIsCurrent:()=>true,cacheRunAlive:()=>true,
-  detectHardwareConcurrency:()=>2,pikafishNativeCacheToken:null,
+  getAnalysisEngineThreadCount:()=>1,pikafishNativeCacheToken:null,
   preparePikafishQuery:async()=>ws,pikafishAttachHandler:(_,handler)=>{listener=handler;},
   pikafishDetachHandler:()=>{listener=null;},markCacheAttemptDispatched:()=>{},
   keepBetterMateInfo:(_,info)=>info,finishCacheAttempt:()=>true,wakeGuideWhenCacheReady:()=>{},
@@ -83,7 +84,7 @@ for(const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi))for(const 
   logEngineStateSemantics:()=>({positionCommand:'position fen test'}),
   beginCacheAttempt:()=>10,waitCacheRetryWindow:async()=>true,
   cacheAttemptIsCurrent:()=>true,cacheRunAlive:()=>true,
-  detectHardwareConcurrency:()=>2,pikafishNativeCacheToken:null,
+  getAnalysisEngineThreadCount:()=>1,pikafishNativeCacheToken:null,
   preparePikafishQuery:async()=>ws,pikafishAttachHandler:(_,handler)=>{listener=handler;},
   pikafishDetachHandler:()=>{listener=null;},markCacheAttemptDispatched:()=>{},
   keepBetterMateInfo:(_,info)=>info,finishCacheAttempt:()=>true,wakeGuideWhenCacheReady:()=>{},

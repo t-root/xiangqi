@@ -5,8 +5,61 @@
 #include "movegen.h"
 
 #include <algorithm>
+#if defined(_MSC_VER) && defined(_M_X64)
+#include <intrin.h>
+#endif
 
 namespace BruteForce {
+
+namespace {
+unsigned long firstBitIndex(uint64_t bits) {
+#if defined(_MSC_VER) && defined(_M_X64)
+    unsigned long bit = 0;
+    _BitScanForward64(&bit, bits);
+    return bit;
+#elif defined(__GNUC__) || defined(__clang__)
+    return static_cast<unsigned long>(__builtin_ctzll(bits));
+#else
+    unsigned long bit = 0;
+    while ((bits & (uint64_t(1) << bit)) == 0) ++bit;
+    return bit;
+#endif
+}
+
+void updatePieceSquare(PieceSquareSet& pieces, Color color, int square, bool present) {
+    const size_t side = static_cast<size_t>(color);
+    const size_t word = static_cast<size_t>(square / 64);
+    const uint64_t bit = uint64_t(1) << (square % 64);
+    if (present) pieces.squares[side][word] |= bit;
+    else pieces.squares[side][word] &= ~bit;
+}
+
+}  // namespace
+
+void PieceSquareSet::reset(const Board& board) {
+    squares = {};
+    for (int row = 0; row < BOARD_HEIGHT; ++row) {
+        for (int col = 0; col < BOARD_WIDTH; ++col) {
+            const Piece& piece = board[row][col];
+            if (!piece.empty())
+                updatePieceSquare(*this, piece.color, squareIndex(row, col), true);
+        }
+    }
+}
+
+void PieceSquareSet::apply(const Move& move, Color color, Piece captured) {
+    const int from = squareIndex(move.from), to = squareIndex(move.to);
+    updatePieceSquare(*this, color, from, false);
+    updatePieceSquare(*this, color, to, true);
+    if (!captured.empty()) updatePieceSquare(*this, otherColor(color), to, false);
+}
+
+void PieceSquareSet::undo(const Move& move, Color color, Piece captured) {
+    const int from = squareIndex(move.from), to = squareIndex(move.to);
+    updatePieceSquare(*this, color, to, false);
+    updatePieceSquare(*this, color, from, true);
+    if (!captured.empty()) updatePieceSquare(*this, otherColor(color), to, true);
+}
 
 bool findKing(const Board& b, Color color, Square& out) {
     int r0 = color == Color::Red ? 7 : 0;
@@ -232,6 +285,22 @@ void generatePseudoMoveList(const Board& b, Color color, std::vector<Move>& out)
             const Piece& piece = b[r][c];
             if (piece.empty() || piece.color != color) continue;
             getPseudoMoves(b, r, c, out);
+        }
+}
+
+void generatePseudoMoveList(const Board& b, Color color, const PieceSquareSet& pieces,
+                                std::vector<Move>& out) {
+        if (color != Color::Red && color != Color::Black) return;
+        if (out.empty()) out.reserve(128);
+        const auto& sideSquares = pieces.squares[static_cast<size_t>(color)];
+        for (size_t word = 0; word < sideSquares.size(); ++word) {
+            uint64_t remaining = sideSquares[word];
+            while (remaining) {
+                const unsigned long bit = firstBitIndex(remaining);
+                const int square = static_cast<int>(word * 64 + bit);
+                getPseudoMoves(b, square / BOARD_WIDTH, square % BOARD_WIDTH, out);
+                remaining &= remaining - 1;
+            }
         }
 }
 

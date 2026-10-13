@@ -1,5 +1,0 @@
-bin/
-data/
-test/.tmp-*/
-dist/*
-!dist/analysis.exe

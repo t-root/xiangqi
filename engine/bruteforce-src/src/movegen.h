@@ -6,6 +6,14 @@
 
 namespace BruteForce {
 
+struct PieceSquareSet {
+    std::array<std::array<uint64_t, 2>, 2> squares{};
+
+    void reset(const Board& board);
+    void apply(const Move& move, Color color, Piece captured);
+    void undo(const Move& move, Color color, Piece captured);
+};
+
 // Khớp findKing() (:1230-1245): quét cung 3x3 trước, rồi mới quét cả bàn (phòng thế cờ dựng tay sai).
 bool findKing(const Board& b, Color color, Square& out);
 
@@ -26,6 +34,8 @@ void getPseudoMoves(const Board& b, int row, int col, std::vector<Move>& out);
 
 // Khớp generatePseudoMoveList() (:1424-1439): pseudo-legal cho CẢ MỘT bên (lọc hợp lệ tại điểm dùng).
 void generatePseudoMoveList(const Board& b, Color color, std::vector<Move>& out);
+void generatePseudoMoveList(const Board& b, Color color, const PieceSquareSet& pieces,
+                            std::vector<Move>& out);
 
 // Khớp generateLegalMoves() (:1441-1458): lọc hợp lệ đầy đủ (không để lộ Tướng mình).
 void generateLegalMoves(const Board& b, Color color, std::vector<Move>& out);

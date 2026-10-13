@@ -11,6 +11,8 @@ for (const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) {
 }
 function load(context, names) {
   vm.createContext(context);
+  vm.runInContext(functions.get('getAnalysisEngineThreadCount'), context);
+  vm.runInContext(functions.get('getGameplayEngineThreadCount'), context);
   for (const name of names) vm.runInContext(functions.get(name), context);
   return context;
 }
@@ -67,15 +69,16 @@ async function test(name,fn){await fn();checks++;console.log('PASS '+name);}
  for(const combo of ['nativecombo','webcombo']) {
   await test(combo+': both start before either finishes; early result keeps peer running',async()=>{
    const pending={},calls=[],progress={},offers=[];
-   const c=load({guideToken:10,guideActive:true,BRAIN_LABELS:labels,guideMovesStatusText:()=>'',
+   const c=load({guideToken:10,guideActive:true,BRAIN_LABELS:labels,PIKAFISH_WEB_HASH_MB:1024,guideMovesStatusText:()=>'',
     guideCurrentCacheBudgets:()=>({red:6,black:6}),buildCurrentEnginePositionState:b=>({board:[],budgets:b}),
     getAnalysisTimeLimitMs:()=>1200,withCompositeEngineDeadline:(_,p)=>p,
-    querySingleEngineGuideMove:(brain,fen,color,time,budget,onInfo)=>{
-     calls.push({brain,time});pending[brain]=deferred();onInfo({depth:brain.startsWith('pika')?12:3});return pending[brain].promise;
+    querySingleEngineGuideMove:(brain,fen,color,time,budget,onInfo,boardBefore,allowHoldingMove,positionState,isCurrent,remainingBudgets,hashReserveMiB)=>{
+     calls.push({brain,time,hashReserveMiB});pending[brain]=deferred();onInfo({depth:brain.startsWith('pika')?12:3});return pending[brain].promise;
     }},['compositeBrains','queryCompositeGuideCandidates','compositeGuideThinkingHtml']);
    const parts=c.compositeBrains(combo);
    const promise=c.queryCompositeGuideCandidates(combo,'fen','red',6,()=>true,(b,i)=>progress[b]=i,a=>offers.push(a),[]);
    assert.equal(calls.length,2);assert.equal(calls[1].time,null);
+   assert(calls.every(call=>call.hashReserveMiB===1024),'Composite BF must reserve Pikafish memory');
    pending[parts[0]].resolve({moveStr:'a0a1',info:{depth:20,scoreType:'mate',scoreVal:6}});await tick();
    assert.equal(offers.length,1);assert.equal(progress[parts[0]].engineStatus,'ready');assert.equal(progress[parts[1]].engineStatus,'running');
    const display=c.compositeGuideThinkingHtml(combo,'attack',6,progress);
@@ -85,7 +88,7 @@ async function test(name,fn){await fn();checks++;console.log('PASS '+name);}
   });
   await test(combo+': failure stays visible while peer completes; stale results are ignored',async()=>{
    const pending={},progress={},offers=[];
-   const c=load({guideToken:1,guideActive:true,guideCurrentCacheBudgets:()=>({}),buildCurrentEnginePositionState:()=>({}),
+   const c=load({guideToken:1,guideActive:true,PIKAFISH_WEB_HASH_MB:1024,guideCurrentCacheBudgets:()=>({}),buildCurrentEnginePositionState:()=>({}),
     getAnalysisTimeLimitMs:()=>10,withCompositeEngineDeadline:(_,p)=>p,
     querySingleEngineGuideMove:brain=>{pending[brain]=deferred();return pending[brain].promise;}},['compositeBrains','queryCompositeGuideCandidates']);
    const parts=c.compositeBrains(combo);
@@ -98,7 +101,7 @@ async function test(name,fn){await fn();checks++;console.log('PASS '+name);}
   for(const brain of ['bruteforce','bruteforceweb']) {
    const commands=[];let holdingBudget;
    const socket={send:s=>commands.push(s)};
-   const c=load({detectHardwareConcurrency:()=>4,buildEnginePositionState:()=>({positionCommand:'position fen snapshot',rootCheckStreak:{}}),
+   const c=load({buildEnginePositionState:()=>({positionCommand:'position fen snapshot',rootCheckStreak:{}}),
     prepareBruteForceWebQuery:async()=>socket,prepareBruteForceQuery:async()=>socket,guideToken:1,
     bruteForceRemainingBudgetCommand:b=>`go budgets red ${b.red} black ${b.black}`,
     runBruteForceGo:async(_,cmd)=>{commands.push(cmd);return {info:{outcomeHint:'draw'}};},

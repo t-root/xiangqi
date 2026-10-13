@@ -10,6 +10,8 @@
 
 namespace BruteForce {
 
+std::atomic<i64> g_progressNodes{0};
+
 namespace {
 
 i64 mateOrderScore(const ScoredMove& m, i32 code, i32 ttCode, i32 killA, i32 killB, const MateSearchState& st) {
@@ -22,17 +24,23 @@ i64 mateOrderScore(const ScoredMove& m, i32 code, i32 ttCode, i32 killA, i32 kil
     return st.mateHistoryScores[historyIndex(m)];
 }
 
-// Khớp orderMovesForMate (:1636-1640).
-void orderMovesForMate(std::vector<ScoredMove>& moves, i32 ttCode, int ply, const MateSearchState& st) {
+void scoreMovesForMate(std::vector<ScoredMove>& moves, i32 ttCode, int ply, const MateSearchState& st) {
     i32 killA = st.mateKillerA[ply], killB = st.mateKillerB[ply];
     for (auto& m : moves) m.ord = mateOrderScore(m, moveCode(m.from, m.to) + 1, ttCode, killA, killB, st);
+}
+
+// Khớp orderMovesForMate (:1636-1640) cho danh sách gốc cần giữ thứ tự tường minh.
+void orderMovesForMate(std::vector<ScoredMove>& moves, i32 ttCode, int ply, const MateSearchState& st) {
+    scoreMovesForMate(moves, ttCode, ply, st);
     std::sort(moves.begin(), moves.end(), [](const ScoredMove& a, const ScoredMove& b) { return a.ord > b.ord; });
 }
 
 std::vector<ScoredMove> pseudoScoredMoves(const Board& b, Color color) {
     std::vector<Move> raw;
     raw.reserve(128);
-    generatePseudoMoveList(b, color, raw);
+    PieceSquareSet pieces;
+    pieces.reset(b);
+    generatePseudoMoveList(b, color, pieces, raw);
     std::vector<ScoredMove> out;
     out.reserve(raw.size());
     for (const Move& m : raw) {
@@ -51,9 +59,9 @@ std::vector<ScoredMove> pseudoScoredMoves(const Board& b, Color color) {
 // new/delete nào cho hai buffer này nữa. Nội dung cuối cùng của outBuf giống hệt pseudoScoredMoves(),
 // chỉ khác chỗ cấp phát.
 void fillPseudoScoredMoves(const Board& b, Color color, std::vector<Move>& rawBuf,
-                            std::vector<ScoredMove>& outBuf) {
+                            std::vector<ScoredMove>& outBuf, const PieceSquareSet& pieces) {
     rawBuf.clear();
-    generatePseudoMoveList(b, color, rawBuf);
+    generatePseudoMoveList(b, color, pieces, rawBuf);
     outBuf.clear();
     outBuf.reserve(rawBuf.size());
     for (const Move& m : rawBuf) {
@@ -105,14 +113,14 @@ SearchResult negamaxForcedMateGen(Board& b, Color color, int redBudget, int blac
                                     int pliesFromRoot, i32 alpha, i32 beta,
                                     i32 h1, i32 h2, CsCode csRed, CsCode csBlack,
                                     MateSearchState& st) {
-    ++st.nodeCounter;
+    if (pliesFromRoot == 0) st.pieceSquares.reset(b);
+    st.countNode();
 
-    // Kiểm tra huỷ/hết giờ ở MỖI nút. Một vài thế rất hẹp có thể mắc lâu trong
-    // cùng một nhánh sâu; kiểm tra mỗi 4096 nút khiến `stop`/`movetime` không
-    // phản hồi và khóa toàn bộ hàng cache.
+    // Kiểm tra huỷ ở mỗi nút; deadline được thăm dò theo lô 256 nút để tránh
+    // gọi đồng hồ ở đường nóng. Sai số dừng tối đa chỉ là một lô nhỏ.
     // Kết quả trả về ở đây KHÔNG được tin — runGoBudget phải tự nhận ra mức budget này bị cắt dở
     // (qua st.timeUp() sau khi gọi xong) và bỏ, không báo cáo như một mức đã quét cạn thật.
-    if (st.isCancelled() || st.timeUp()) return {0, {}};
+    if (st.shouldStop()) return {0, {}};
 
     int myBudget = (color == Color::Red) ? redBudget : blackBudget;
     if (myBudget <= 0) {
@@ -144,7 +152,8 @@ SearchResult negamaxForcedMateGen(Board& b, Color color, int redBudget, int blac
 
     st.ensureMoveBuf(pliesFromRoot);
     std::vector<ScoredMove>& moves = st.scoredMoveBuf[static_cast<size_t>(pliesFromRoot)];
-    fillPseudoScoredMoves(b, color, st.rawMoveBuf[static_cast<size_t>(pliesFromRoot)], moves);
+    fillPseudoScoredMoves(b, color, st.rawMoveBuf[static_cast<size_t>(pliesFromRoot)], moves,
+                          st.pieceSquares);
     orderMovesForMate(moves, ttCode, ply, st);
 
     i32 best = -SEARCH_INF;
@@ -159,15 +168,21 @@ SearchResult negamaxForcedMateGen(Board& b, Color color, int redBudget, int blac
     if (!findKing(b, color, kingSquare)) return {-(MATE_SCORE - pliesFromRoot), {}};
     bool inCheckNow = isKingAttacked(b, color, kingSquare);
     Square oppKing;
-    bool haveOppKing = csRestricted(st.restrictedSide, color) && findKing(b, opp, oppKing);  // khớp :3344
+    bool haveOppKing = csRestricted(st.restrictedSide, color) &&
+        findKing(b, opp, oppKing);  // khớp :3344
     CsCode myStreak = isRed ? csRed : csBlack;
 
     for (const ScoredMove& move : moves) {
         bool ktcSkip = isKtcBudgetSkip(move, color, st, inCheckNow);
         Piece captured = makeMoveInPlace(b, move);
+        st.pieceSquares.apply(move, color, captured);
 
         Square myKing = (move.piece.type == PieceType::King) ? move.to : kingSquare;
-        if (isKingAttacked(b, color, myKing)) { undoMoveInPlace(b, move, captured); continue; }
+        if (isKingAttacked(b, color, myKing)) {
+            undoMoveInPlace(b, move, captured);
+            st.pieceSquares.undo(move, color, captured);
+            continue;
+        }
         ++legalCount;
 
         i32 score;
@@ -207,16 +222,19 @@ SearchResult negamaxForcedMateGen(Board& b, Color color, int redBudget, int blac
             score = -res.score;
         }
         undoMoveInPlace(b, move, captured);
+        st.pieceSquares.undo(move, color, captured);
 
         // A cancelled child is not a bound. Never retain it in a warm session.
-        if (st.isCancelled() || st.timeUp()) return {0, {}};
+        if (st.shouldStop()) return {0, {}};
 
         if (score > best) {
             best = score;
             bestCode = moveCode(move.from, move.to) + 1;
             bestLine.clear();
-            bestLine.push_back(move);
-            if (haveRes) bestLine.insert(bestLine.end(), res.line.begin(), res.line.end());
+            if (pliesFromRoot == 0 || score > MATE_THRESHOLD || score < -MATE_THRESHOLD) {
+                bestLine.push_back(move);
+                if (haveRes) bestLine.insert(bestLine.end(), res.line.begin(), res.line.end());
+            }
         }
         if (best > alpha) alpha = best;
         if (alpha >= beta) {
@@ -229,13 +247,6 @@ SearchResult negamaxForcedMateGen(Board& b, Color color, int redBudget, int blac
             }
             break;
         }
-        // Hết giờ/bị huỷ ngay SAU khi một nhánh con vừa trả về: dừng NGAY tại đây, đừng thử tiếp
-        // các nước anh em còn lại ở nút này. Chỉ dựa vào kiểm tra định kỳ ở đầu hàm (mỗi 4096 nút
-        // TOÀN CÂY) là không đủ — mỗi tổ tiên gần gốc còn phải duyệt hết các nước anh em CỦA NÓ
-        // trước khi tự thấy hết giờ, cộng dồn qua hàng chục cấp thì phần vượt hạn giờ cứ dồn dần
-        // (đã thấy thật: xin 3s, tràn tới 15s+ ở thế cờ khai cuộc đủ quân). Kiểm tra ngay tại đây,
-        // sau MỖI nước con, chặn đứng việc "rò rỉ" cộng dồn đó ngay từ gốc.
-        if (st.isCancelled() || st.timeUp()) break;
     }
 
     if (legalCount == 0) return {-(MATE_SCORE - pliesFromRoot), {}};
@@ -243,6 +254,12 @@ SearchResult negamaxForcedMateGen(Board& b, Color color, int redBudget, int blac
     TTFlag flag = best <= alphaAtEntry ? TTFlag::Upper : (best >= betaAtEntry ? TTFlag::Lower : TTFlag::Exact);
     rememberMateWitness(st, h1, h2, redBudget, blackBudget, color, csRed, csBlack, bestCode, best);
     st.tt.store(kh1, kh2, redBudget, blackBudget, isRed, best, flag, bestCode, pliesFromRoot);
+    const size_t capacity = st.tt.capacitySlots();
+    if (st.growHashTable && st.nodeCounter >= st.nextHashGrowthCheck && capacity &&
+        st.tt.used() >= capacity * 9 / 10) {
+        if (!st.growHashTable(st.tt)) st.nextHashGrowthCheck = st.nodeCounter + 1'000'000;
+        else st.nextHashGrowthCheck = 0;
+    }
     return {best, bestLine};
 }
 
@@ -253,13 +270,15 @@ SearchResult negamaxForcedMateRootSubsetGen(Board& b, Color color, int redBudget
                                               const std::vector<Move>& subsetMoves, i32 alpha, i32 beta,
                                               i32 h1, i32 h2, CsCode csRed, CsCode csBlack,
                                               MateSearchState& st) {
+    st.pieceSquares.reset(b);
     bool isRed = color == Color::Red;
     Color opp = otherColor(color);
     Square kingSquare;
     if (!findKing(b, color, kingSquare)) return {-(MATE_SCORE - 1), {}};
     bool inCheckNow = isKingAttacked(b, color, kingSquare);
     Square oppKing;
-    bool haveOppKing = csRestricted(st.restrictedSide, color) && findKing(b, opp, oppKing);
+    bool haveOppKing = csRestricted(st.restrictedSide, color) &&
+        findKing(b, opp, oppKing);
     CsCode myStreak = isRed ? csRed : csBlack;
 
     i32 best = -SEARCH_INF;
@@ -274,7 +293,8 @@ SearchResult negamaxForcedMateRootSubsetGen(Board& b, Color color, int redBudget
 
         bool ktcSkip = isKtcBudgetSkip(move, color, st, inCheckNow);
         Piece captured = makeMoveInPlace(b, move);
-        ++st.nodeCounter;
+        st.pieceSquares.apply(move, color, captured);
+        st.countNode();
 
         i32 score;
         bool haveRes = false;
@@ -310,19 +330,21 @@ SearchResult negamaxForcedMateRootSubsetGen(Board& b, Color color, int redBudget
             score = -res.score;
         }
         undoMoveInPlace(b, move, captured);
+        st.pieceSquares.undo(move, color, captured);
 
-        if (st.isCancelled() || st.timeUp()) return {0, {}};
+        if (st.shouldStop()) return {0, {}};
 
         if (score > best) {
             best = score;
             bestCode = moveCode(move.from, move.to) + 1;
             bestLine.clear();
-            bestLine.push_back(move);
-            if (haveRes) bestLine.insert(bestLine.end(), res.line.begin(), res.line.end());
+            if (score > MATE_THRESHOLD || score < -MATE_THRESHOLD) {
+                bestLine.push_back(move);
+                if (haveRes) bestLine.insert(bestLine.end(), res.line.begin(), res.line.end());
+            }
         }
         if (best > alpha) alpha = best;
         if (alpha >= beta) break;
-        if (st.isCancelled() || st.timeUp()) break;
     }
     rememberMateWitness(st, h1, h2, redBudget, blackBudget, color, csRed, csBlack, bestCode, best);
     return {best, bestLine};
@@ -429,7 +451,7 @@ ProbeResult probeForcedMateAlphaBetaGen(Board& b, Color color, int redBudget, in
     st.ktcExemptColor = savedExempt;
     if (loss.score < -MATE_THRESHOLD) return {true, loss.score, loss.line};
 
-    return {false, 0, {}};
+    return {false, loss.score, loss.line};
 }
 
 }  // namespace BruteForce

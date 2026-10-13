@@ -3,16 +3,33 @@
 <script>
 (async()=>{
  const lines=[];const result=document.getElementById('result');
- const mod=await BruteForceWeb({locateFile:p=>'/bruteforce-web/'+p,print:s=>lines.push(s),printErr:console.warn,onAbort:r=>result.textContent='FAIL abort '+r});
+ const mark=s=>{result.textContent=s;};
+ mark('Loading Web engine');
+ const mod=await BruteForceWeb({locateFile:p=>'/bruteforce-web/'+p,print:s=>{lines.push(s);mark(lines.slice(-4).join('\n'));},printErr:console.warn,onAbort:r=>result.textContent='FAIL abort '+r});
+ mark('Web engine initialized');
  const send=s=>{const n=mod.lengthBytesUTF8(s)+1,p=mod._malloc(n);try{mod.stringToUTF8(s,p,n);mod._bruteforce_command(p);}finally{mod._free(p);}};
  const wait=async(start,pred)=>{for(let i=0;i<1000;i++){const hit=lines.slice(start).find(pred);if(hit)return hit;await new Promise(r=>setTimeout(r,10));}throw Error('timeout '+lines.slice(-8).join('\n'));};
+ const opening='rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1';
+ send('position fen '+opening);send('go budget 1');
+ await wait(0,s=>s==='info string outcome draw');
+ let holdBest=await wait(0,s=>s.startsWith('bestmove '));
+ const holdMove=holdBest.slice('bestmove '.length);
+ if(!/^[a-i][0-9][a-i][0-9]$/.test(holdMove))throw Error('proven hold did not return a root move');
+ let n=lines.length;
+ send('position fen '+opening+' moves '+holdMove);send('go budgets red 0 black 1');
+ await wait(n,s=>s==='info string outcome draw');
+ await wait(n,s=>s.startsWith('bestmove '));
  const fen='9/5k3/9/9/5C3/9/9/4K4/2c6/C8 w - - 0 1';
- send('position fen '+fen);send('go budget 4 movetime 2000');
+ send('setoption name Threads value 2');
+ send('position fen '+fen);send('go budget 4 movetime 5000');
+ mark('Searching with two threads');
  await wait(0,s=>s==='bestmove a0f0');
+ if(!lines.some(s=>s.includes('hash allocated')&&s.includes('threads=2')))throw Error('configured two-thread hash allocation was not reported');
+ if(!lines.some(s=>s.startsWith('info string progress ')&&/nodes=[1-9]\d*/.test(s)&&/hashFillTenths=\d+/.test(s)&&/hashLevel=\d+/.test(s)))throw Error('live RAM/hash and node telemetry was not reported');
  for(let i=0;i<10;i++){const n=lines.length;send('go budget 60');send('stop');await wait(n,s=>s.startsWith('bestmove'));}
- let n=lines.length;send('position fen '+fen+' moves zzzz');await wait(n,s=>s.includes('ERROR:'));
+ n=lines.length;send('position fen '+fen+' moves zzzz');await wait(n,s=>s.includes('ERROR:'));
  send('position fen '+fen);send('search create web');
  n=lines.length;send('search slice web budget 4 movetime 2000');await wait(n,s=>s==='bestmove a0f0');send('search cancel web');
- result.textContent='PASS BF Web: mate, 10 immediate stops, malformed move, session create/slice/cancel';
+ result.textContent='PASS BF Web: proven hold move, mate, 10 immediate stops, malformed move, session create/slice/cancel';
 })().catch(e=>document.getElementById('result').textContent='FAIL '+e.stack);
 </script>

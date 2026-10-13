@@ -61,7 +61,7 @@ $arguments = @(
     '-std=c++17', '-O1', '-DNDEBUG', '-DIS_64BIT', '-DARCH=wasm32',
     '-DUSE_POPCNT', '-DUSE_SLOPPY_ATOMICS', '-DUSE_SSE2', '-DUSE_SSSE3', '-DUSE_SSE41',
     '-fno-exceptions', '-pthread', '-msimd128', '-msse', '-msse2', '-mssse3', '-msse4.1',
-    '-sINITIAL_MEMORY=64MB', '-sALLOW_MEMORY_GROWTH', '-sSTACK_SIZE=3MB', '-sPTHREAD_POOL_SIZE=2',
+    '-sINITIAL_MEMORY=64MB', '-sALLOW_MEMORY_GROWTH', '-sSTACK_SIZE=3MB', '-sPTHREAD_POOL_SIZE=3',
     '-sMODULARIZE=1', '-sEXPORT_NAME=Pikafish', '-sENVIRONMENT=web,worker', '-sFORCE_FILESYSTEM=1',
     "-sEXPORTED_FUNCTIONS=['_pikafish_command','_malloc','_free']",
     "-sEXPORTED_RUNTIME_METHODS=['stringToUTF8','lengthBytesUTF8']",

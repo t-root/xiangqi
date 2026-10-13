@@ -25,9 +25,12 @@ node tests/cache-logic-smoke-test.js
 
 | File/thư mục | Mục đích |
 |---|---|
-| `crash-regression.cjs` | 16 nhóm kiểm tra BF/Pikafish, EOF, stop, parser, cache session, lỗi cầu nối và restart qua WebSocket thật |
-| `composite-regression.cjs` | 6 nhóm kiểm tra phối hợp native/Web, cả hai engine được gọi, trạng thái riêng và loại kết quả cũ |
+| `crash-regression.cjs` | 22 nhóm kiểm tra BF/Pikafish, gồm nước gốc của proof hòa, Threads/hash BF, giữ TT qua các mức budget, EOF, stop, parser, cache session, lỗi cầu nối và restart qua WebSocket thật |
+| `composite-regression.cjs` | 8 nhóm kiểm tra phối hợp native/Web, cả hai engine được gọi, dự trữ RAM BF và loại kết quả cũ |
+| `analysis-progress-visibility.cjs` | Kiểm tra parser/render telemetry Hash/RAM của Brute-force và trạng thái dòng engine sau phân tích |
 | `cache-logic-smoke-test.js` | Kiểm tra trạng thái cache, mức chứng minh, retry và run ID |
+| `engine-thread-settings.cjs` | Kiểm tra chính sách luồng cố định: Phân tích dùng 1 luồng; Duyệt/điều khiển dùng 2 luồng cho mỗi engine |
+| `dynamic-hash-table.cpp` | Kiểm tra bảng băm phân đoạn: mục cũ còn tra được sau khi nở, checkpoint round-trip, clear và trigger nở ở ngưỡng 85% khi tìm kiếm |
 | `pikafish-resources.cjs` | Kiểm tra giữ Threads/Hash giữa các lượt, đổi cấu hình và khởi tạo lại sau restart/kết nối mới |
 | `pikafish-ktc.cjs` | Luật ktc trong Pikafish tự build (KtcBudget/KtcAttacker): số nước tính đòn khớp Brute-force trên 3 thế (gồm bên tấn công Đen), mặc định tắt, tắt lại không sót điểm cũ. Dùng `PIKA_EXE` để thử bản khác |
 | `pikafish-ktc-find.cjs` | Công cụ chẩn đoán (không trong bộ chính): quét thế ngẫu nhiên tìm thế mà ktc đổi kết quả, đối chiếu Brute-force với Pikafish |
@@ -39,6 +42,7 @@ node tests/cache-logic-smoke-test.js
 | `serve-composite-test.cjs` | Giao diện thử phối hợp; bridge riêng localhost:19989/19990, HTTP:19998 |
 | `native/debug_root_streak.cpp` | Phép đối chiếu luật chuỗi chiếu, có main riêng |
 | `build-native-tests.ps1` | Dựng binary chẩn đoán vào `binaries/`, không ghi đè engine chính |
+| `native/piece_square_set.cpp` | Đối chiếu danh sách nước từ chỉ mục quân với cách quét toàn bàn, qua biến đổi và undo nước |
 | `binaries/` | Bản lịch sử và bản chẩn đoán; xem nguồn phục hồi bên dưới |
 | `upstream/pikafish/tests/` | 6 file test nguyên bản lấy từ Git Pikafish |
 | `reports/` | Báo cáo crash/phối hợp, danh mục phục hồi và kết quả kiểm tra |
@@ -80,6 +84,7 @@ Bài tự dừng cache khi PASS/FAIL, tối đa 90 giây; đây là kiểm tra t
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tests/build-native-tests.ps1
 ./tests/binaries/debug_root_streak.exe
+./tests/binaries/piece_square_set.exe
 node tests/crash-baseline.cjs
 ```
 

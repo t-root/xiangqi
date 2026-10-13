@@ -690,7 +690,7 @@ var PThread = {
     }
   },
   initMainThread() {
-    var pthreadPoolSize = 1;
+    var pthreadPoolSize = 3;
     // Start loading up the Worker pool, if requested.
     while (pthreadPoolSize--) {
       PThread.allocateUnusedWorker();
@@ -1248,7 +1248,7 @@ var __emscripten_receive_on_main_thread_js = (funcIndex, emAsmAddr, callingThrea
     proxiedJSCallArgs.push(arg);
   }
   // Proxied JS library funcs use funcIndex and EM_ASM functions use emAsmAddr
-  var func = proxiedFunctionTable[funcIndex];
+  var func = emAsmAddr ? ASM_CONSTS[emAsmAddr] : proxiedFunctionTable[funcIndex];
   PThread.currentProxiedOperationCallerThread = callingThread;
   var rtn = func(...proxiedJSCallArgs);
   PThread.currentProxiedOperationCallerThread = 0;
@@ -1393,6 +1393,35 @@ function _clock_time_get(clk_id, ignored_precision, ptime) {
   (growMemViews(), HEAP64)[((ptime) >> 3)] = BigInt(nsec);
   return 0;
 }
+
+var readEmAsmArgsArray = [];
+
+var readEmAsmArgs = (sigPtr, buf) => {
+  readEmAsmArgsArray.length = 0;
+  var ch;
+  // Most arguments are i32s, so shift the buffer pointer so it is a plain
+  // index into HEAP32.
+  while (ch = (growMemViews(), HEAPU8)[sigPtr++]) {
+    // Floats are always passed as doubles, so all types except for 'i'
+    // are 8 bytes and require alignment.
+    var wide = (ch != 105);
+    wide &= (ch != 112);
+    buf += wide && (buf % 8) ? 4 : 0;
+    readEmAsmArgsArray.push(// Special case for pointers under wasm64 or CAN_ADDRESS_2GB mode.
+    ch == 112 ? (growMemViews(), HEAPU32)[((buf) >> 2)] : ch == 106 ? (growMemViews(), 
+    HEAP64)[((buf) >> 3)] : ch == 105 ? (growMemViews(), HEAP32)[((buf) >> 2)] : (growMemViews(), 
+    HEAPF64)[((buf) >> 3)]);
+    buf += wide ? 8 : 4;
+  }
+  return readEmAsmArgsArray;
+};
+
+var runEmAsmFunction = (code, sigPtr, argbuf) => {
+  var args = readEmAsmArgs(sigPtr, argbuf);
+  return ASM_CONSTS[code](...args);
+};
+
+var _emscripten_asm_const_int = (code, sigPtr, argbuf) => runEmAsmFunction(code, sigPtr, argbuf);
 
 var _emscripten_check_blocking_allowed = () => {};
 
@@ -4222,6 +4251,13 @@ Module["lengthBytesUTF8"] = lengthBytesUTF8;
 // access e.g. the DOM on the main thread.
 var proxiedFunctionTable = [ _proc_exit, exitOnMainThread, pthreadCreateProxied, _environ_get, _environ_sizes_get, _fd_close, _fd_read, _fd_seek, _fd_write ];
 
+var ASM_CONSTS = {
+  21676: () => {
+    const memoryGiB = globalThis.navigator && Number(navigator.deviceMemory);
+    return Math.max(256, Math.floor((Number.isFinite(memoryGiB) && memoryGiB > 0 ? memoryGiB : 2) * 1024));
+  }
+};
+
 // Imports from the Wasm binary.
 var _bruteforce_command, __emscripten_tls_init, _pthread_self, __emscripten_thread_init, ___set_thread_state, __emscripten_thread_crashed, __emscripten_run_js_on_main_thread_done, __emscripten_run_js_on_main_thread, __emscripten_thread_free_data, __emscripten_thread_exit, _malloc, _free, __emscripten_check_mailbox, _setThrew, __emscripten_tempret_set, _emscripten_stack_set_limits, __emscripten_stack_restore, __emscripten_stack_alloc, _emscripten_stack_get_current, ___cxa_decrement_exception_refcount, ___cxa_increment_exception_refcount, ___cxa_can_catch, ___cxa_get_exception_ptr, __indirect_function_table, wasmTable;
 
@@ -4275,6 +4311,7 @@ function assignWasmImports() {
     /** @export */ _emscripten_thread_set_strongref: __emscripten_thread_set_strongref,
     /** @export */ _tzset_js: __tzset_js,
     /** @export */ clock_time_get: _clock_time_get,
+    /** @export */ emscripten_asm_const_int: _emscripten_asm_const_int,
     /** @export */ emscripten_check_blocking_allowed: _emscripten_check_blocking_allowed,
     /** @export */ emscripten_exit_with_live_runtime: _emscripten_exit_with_live_runtime,
     /** @export */ emscripten_get_now: _emscripten_get_now,
@@ -4308,12 +4345,15 @@ function assignWasmImports() {
     /** @export */ invoke_vii,
     /** @export */ invoke_viii,
     /** @export */ invoke_viiii,
+    /** @export */ invoke_viiiii,
     /** @export */ invoke_viiiiiii,
     /** @export */ invoke_viiiiiiiiii,
     /** @export */ invoke_viiiiiiiiiiiiiii,
     /** @export */ invoke_viiiiiiiiiijji,
+    /** @export */ invoke_viiiiiiiiijjiii,
     /** @export */ invoke_viiiiiijjii,
     /** @export */ invoke_viiiiijji,
+    /** @export */ invoke_viiiiijjiii,
     /** @export */ invoke_viij,
     /** @export */ invoke_viiji,
     /** @export */ invoke_vij,
@@ -4501,10 +4541,10 @@ function invoke_iiiii(index, a1, a2, a3, a4) {
   }
 }
 
-function invoke_viiiiijji(index, a1, a2, a3, a4, a5, a6, a7, a8) {
+function invoke_viiiiijjiii(index, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) {
   var sp = stackSave();
   try {
-    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8);
+    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10);
   } catch (e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;
@@ -4523,10 +4563,43 @@ function invoke_viiii(index, a1, a2, a3, a4) {
   }
 }
 
+function invoke_viiiiijji(index, a1, a2, a3, a4, a5, a6, a7, a8) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
 function invoke_iiiiiii(index, a1, a2, a3, a4, a5, a6) {
   var sp = stackSave();
   try {
     return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_viiiiiiiiijjiii(index, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_viiiiiiiiiijji(index, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13);
   } catch (e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;
@@ -4557,17 +4630,6 @@ function invoke_iiiiiiijji(index, a1, a2, a3, a4, a5, a6, a7, a8, a9) {
   }
 }
 
-function invoke_viiiiiiiiiijji(index, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13) {
-  var sp = stackSave();
-  try {
-    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13);
-  } catch (e) {
-    stackRestore(sp);
-    if (!(e instanceof EmscriptenEH)) throw e;
-    _setThrew(1, 0);
-  }
-}
-
 function invoke_iiiiii(index, a1, a2, a3, a4, a5) {
   var sp = stackSave();
   try {
@@ -4583,6 +4645,17 @@ function invoke_viiiiiijjii(index, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) {
   var sp = stackSave();
   try {
     getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_viiiii(index, a1, a2, a3, a4, a5) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3, a4, a5);
   } catch (e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;

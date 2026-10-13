@@ -9,10 +9,13 @@
 #include <vector>
 #include <atomic>
 #include <chrono>
+#include <functional>
 #include <optional>
 #include <unordered_map>
 
 namespace BruteForce {
+
+extern std::atomic<i64> g_progressNodes;
 
 // Ghi nước đã chọn của các nút mate ngay trong lượt chứng minh. TT chỉ giữ
 // một nước và điểm để cắt tỉa, nên TT-hit không mang được phần đuôi PV ra UI.
@@ -63,6 +66,8 @@ struct MateSearchState {
     Color ktcExemptColor = Color::None;
 
     i64 nodeCounter = 0;
+    i64 progressReportedNodes = 0;
+    PieceSquareSet pieceSquares;
     std::atomic<bool>* cancelled = nullptr;  // trỏ tới cờ huỷ dùng chung (nullptr = không bao giờ huỷ)
 
     // Hạn giờ THẬT của "go budget ... movetime N" — thiếu cái này thì vòng lặp NGOÀI (runGoBudget)
@@ -71,6 +76,8 @@ struct MateSearchState {
     // PositionalSearchState (positional.h) trước đây, giờ áp nốt cho nhánh quét cạn thắng ép.
     std::optional<std::chrono::steady_clock::time_point> deadline;
     std::unordered_map<MateWitnessKey, i32, MateWitnessKeyHash> mateWitness;
+    std::function<bool(TranspositionTable&)> growHashTable;
+    i64 nextHashGrowthCheck = 0;
 
     // Buffer nước đi TÁI DÙNG theo từng độ sâu (pliesFromRoot), để negamaxForcedMateGen không phải
     // cấp phát 2 std::vector MỚI (raw pseudo-move list + danh sách đã chấm điểm) ở MỖI NÚT — trên
@@ -93,6 +100,28 @@ struct MateSearchState {
 
     bool isCancelled() const { return cancelled && cancelled->load(std::memory_order_relaxed); }
     bool timeUp() const { return deadline && std::chrono::steady_clock::now() > *deadline; }
+
+    void countNode() {
+        ++nodeCounter;
+        const i64 pending = nodeCounter - progressReportedNodes;
+        if (pending >= 256) {
+            g_progressNodes.fetch_add(pending, std::memory_order_relaxed);
+            progressReportedNodes = nodeCounter;
+        }
+    }
+
+    void flushProgressNodes() {
+        const i64 pending = nodeCounter - progressReportedNodes;
+        if (pending > 0) {
+            g_progressNodes.fetch_add(pending, std::memory_order_relaxed);
+            progressReportedNodes = nodeCounter;
+        }
+    }
+
+    bool shouldStop() const {
+        if ((nodeCounter & 63) == 0 && isCancelled()) return true;
+        return deadline && (nodeCounter & 255) == 0 && timeUp();
+    }
 
     void reset() {  // khớp resetSearchTables() (:1578-1582)
         tt.clear();

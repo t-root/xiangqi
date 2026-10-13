@@ -4,7 +4,7 @@ const {WebSocketServer}=require('../engine/node_modules/ws');
 const root=path.resolve(__dirname,'..'),children=[],sockets=[],timers=new Set();let closed=false;
 const source=fs.readFileSync(path.join(root,'engine/server.js'),'utf8');
 const context={console,spawn:(...args)=>{const c=spawn(...args);children.push(c);return c;},
- WebSocketServer:class extends WebSocketServer{constructor({port}){super({port,host:'127.0.0.1'});sockets.push(this);}},
+ WebSocketServer:class extends WebSocketServer{constructor(options){super(options.port?{...options,host:'127.0.0.1'}:options);sockets.push(this);}},
  killPortIfBusy(){},getLocalIP:()=> '127.0.0.1',clearTimeout,
  setTimeout:(fn,ms)=>{if(closed)return 0;const t=setTimeout(fn,ms);timers.add(t);return t;}};
 vm.createContext(context);
@@ -20,7 +20,8 @@ const server=http.createServer((req,res)=>{
  res.setHeader('Cache-Control','no-store');
  res.setHeader('Content-Type',target.endsWith('.wasm')?'application/wasm':target.endsWith('.js')?'text/javascript':target.endsWith('.html')?'text/html; charset=utf-8':'application/octet-stream');
  fs.readFile(target,(err,data)=>{if(err){res.writeHead(404);return res.end('Not found');}
-  if(isTest)data=data.toString('utf8').replaceAll('ws://localhost:8899','ws://127.0.0.1:19989').replaceAll('ws://localhost:8900','ws://127.0.0.1:19990')
+  if(isTest)data=data.toString('utf8')
+   .replaceAll('ws://localhost:8899','ws://127.0.0.1:19989').replaceAll('ws://localhost:8900','ws://127.0.0.1:19990')
    .replace('</body>', url.searchParams.has('plain') ? '</body>' : '<script src="/tests/browser/' + (url.searchParams.has('initial-lines') ? 'analysis-engine-lines.js' : url.searchParams.has('history') ? 'history-test.js' : url.searchParams.has('cache') ? 'cache-repro.js' : 'composite-browser-test.js') + '"></script></body>');
   res.end(data);
  });

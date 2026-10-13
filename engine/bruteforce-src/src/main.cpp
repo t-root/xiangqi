@@ -42,9 +42,17 @@
 #include <unordered_map>
 #include <functional>
 #include <stdexcept>
+#include <limits>
 
 #ifdef __EMSCRIPTEN__
     #include <emscripten/emscripten.h>
+#elif defined(_WIN32)
+    #if !defined(NOMINMAX)
+        #define NOMINMAX
+    #endif
+    #include <windows.h>
+#else
+    #include <sys/sysinfo.h>
 #endif
 
 using namespace BruteForce;
@@ -71,11 +79,39 @@ int g_checkStreakLimit = CHECK_STREAK_DEFAULT;
 // định, app báo qua option CheckStreak_BonusRule trước mỗi lượt "go" giống hệt cách báo
 // CheckStreak_RestrictedColor/Limit.
 bool g_checkStreakBonusRuleOn = false;
-// Số luồng THẬT sẽ dùng cho nhánh tìm chiếu bí (searchMateRootParallel) — luôn bị kẹp về
-// min(giá trị UI xin, số nhân thật của máy, 8) ngay trong handleSetOption("Threads"). Đo thật cho
-// thấy xin nhiều hơn số nhân thật không cho thêm gì (có khi còn lỗ), nên khoá cứng ở đó thay vì tin
-// UI. Nhánh thế trận (searchPositionalRootParallel) CHƯA dùng biến này — xem ghi chú tại đó.
+// Số luồng tìm kiếm mate; mỗi luồng dùng một state riêng và có tối đa ba worker phụ.
 int g_threads = 1;
+int g_hashReserveMiB = 0;
+constexpr uint64_t HASH_GIB = uint64_t(1) << 30;
+constexpr uint64_t HASH_MIB = uint64_t(1) << 20;
+
+uint64_t totalPhysicalMemoryBytes() {
+#ifdef __EMSCRIPTEN__
+    const int memoryMiB = EM_ASM_INT({
+        const memoryGiB = globalThis.navigator && Number(navigator.deviceMemory);
+        return Math.max(256, Math.floor((Number.isFinite(memoryGiB) && memoryGiB > 0 ? memoryGiB : 2) * 1024));
+    });
+    return static_cast<uint64_t>(memoryMiB) * HASH_MIB;
+#elif defined(_WIN32)
+    MEMORYSTATUSEX status{};
+    status.dwLength = sizeof(status);
+    return GlobalMemoryStatusEx(&status) ? status.ullTotalPhys : 0;
+#else
+    struct sysinfo info{};
+    return sysinfo(&info) == 0 ? static_cast<uint64_t>(info.totalram) * info.mem_unit : 0;
+#endif
+}
+
+uint64_t maximumHashBytes() {
+    const uint64_t total = totalPhysicalMemoryBytes();
+    if (!total) throw std::runtime_error("could not determine total physical memory for BF hash sizing");
+    uint64_t maximum = (total / 3) * 2 + ((total % 3) * 2) / 3;
+#ifdef __EMSCRIPTEN__
+    maximum = std::min(maximum, uint64_t(2) * HASH_GIB);
+#endif
+    const uint64_t reserve = static_cast<uint64_t>(g_hashReserveMiB) * HASH_MIB;
+    return maximum > reserve ? maximum - reserve : 0;
+}
 
 // Chuỗi chiếu ĐÃ CÓ SẴN ở thế cờ gốc, mang theo từ ván đang chơi thật (app chỉ gửi board FEN hiện
 // tại qua "position", không gửi lịch sử nước — không có 2 option này thì mọi lượt "go" đều ngỡ
@@ -121,6 +157,184 @@ void startSearch(Function function, Args... args) {
     } catch (...) { g_searching = false; throw; }
 }
 
+class HashGrowthPool {
+public:
+    HashGrowthPool(uint64_t allocatedBytes, uint64_t maximumBytes)
+        : allocatedBytes_(allocatedBytes), maximumBytes_(maximumBytes) {}
+
+    uint64_t allocatedBytes() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return allocatedBytes_;
+    }
+
+    uint64_t maximumBytes() const { return maximumBytes_; }
+
+    bool grow(TranspositionTable& table) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const uint64_t allocated = allocatedBytes_;
+        if (allocated >= maximumBytes_) {
+            reportLimitReached();
+            return false;
+        }
+        const uint64_t growthBytes = std::min(HASH_GIB, maximumBytes_ - allocated);
+        const size_t growthSlots = static_cast<size_t>(growthBytes / TranspositionTable::ENTRY_BYTES);
+        if (!growthSlots) {
+            reportLimitReached();
+            return false;
+        }
+        try {
+            table.growSlots(growthSlots);
+        } catch (const std::bad_alloc&) {
+            sendLine("info string hash growth stopped reason=allocation-failed");
+            return false;
+        }
+        allocatedBytes_ += static_cast<uint64_t>(growthSlots) * TranspositionTable::ENTRY_BYTES;
+        sendLine("info string hash expanded allocatedMiB=" +
+                 std::to_string(allocatedBytes_ / HASH_MIB));
+        return true;
+    }
+
+private:
+    void reportLimitReached() {
+        if (limitReported_) return;
+        sendLine("info string hash growth stopped reason=two-thirds-physical-ram limitMiB=" +
+                 std::to_string(maximumBytes_ / HASH_MIB));
+        limitReported_ = true;
+    }
+
+    std::mutex mutex_;
+    uint64_t allocatedBytes_;
+    const uint64_t maximumBytes_;
+    bool limitReported_ = false;
+};
+
+class SearchProgressReporter {
+public:
+    SearchProgressReporter(MateSearchState& state, std::vector<MateSearchState>& workers,
+                           const std::shared_ptr<HashGrowthPool>& hashPool,
+                           std::atomic<int>& level, std::chrono::steady_clock::time_point started)
+        : state_(state), workers_(workers), hashPool_(hashPool), level_(level),
+          started_(started), reporter_([this] { reportLoop(); }) {}
+
+    ~SearchProgressReporter() { stop(); }
+
+    void stop() {
+        if (reporter_.joinable()) {
+            stopped_.store(true, std::memory_order_release);
+            reporter_.join();
+            state_.flushProgressNodes();
+            for (MateSearchState& worker : workers_) worker.flushProgressNodes();
+            report();
+        }
+    }
+
+private:
+    void report(i64 nps = 0) {
+        const auto now = std::chrono::steady_clock::now();
+        const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - started_).count();
+        const i64 nodes = g_progressNodes.load(std::memory_order_relaxed);
+        const uint64_t allocatedBytes = hashPool_->allocatedBytes();
+        const uint64_t maximumBytes = hashPool_->maximumBytes();
+        size_t used = state_.tt.used(), capacity = state_.tt.capacitySlots();
+        for (const MateSearchState& worker : workers_) {
+            used += worker.tt.used();
+            capacity += worker.tt.capacitySlots();
+        }
+        const int hashFillTenths = capacity
+            ? static_cast<int>(std::min<uint64_t>(1000, static_cast<uint64_t>(used) * 1000 / capacity))
+            : 0;
+        const uint64_t allocatedMiB = allocatedBytes / HASH_MIB;
+        const uint64_t maxMiB = maximumBytes / HASH_MIB;
+        const uint64_t hashLevel = std::max<uint64_t>(1, (allocatedMiB + 1023) / 1024);
+        std::ostringstream line;
+        line << "info string progress level=" << level_.load(std::memory_order_relaxed)
+             << " nodes=" << nodes << " nps=" << nps
+             << " hashFillTenths=" << hashFillTenths
+             << " hashAllocatedMiB=" << allocatedMiB
+             << " hashMaxMiB=" << maxMiB
+             << " hashLevel=" << hashLevel
+             << " elapsedMs=" << elapsedMs << " saving=0";
+        sendLine(line.str());
+    }
+
+    void reportLoop() {
+        i64 lastNodes = g_progressNodes.load(std::memory_order_relaxed);
+        auto lastReportedAt = std::chrono::steady_clock::now();
+        report();
+        while (!stopped_.load(std::memory_order_acquire)) {
+            for (int i = 0; i < 5 && !stopped_.load(std::memory_order_acquire); ++i)
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            if (stopped_.load(std::memory_order_acquire)) break;
+            const auto now = std::chrono::steady_clock::now();
+            const i64 nodes = g_progressNodes.load(std::memory_order_relaxed);
+            const auto intervalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                now - lastReportedAt).count();
+            const i64 nps = intervalMs > 0 ? (nodes - lastNodes) * 1000 / intervalMs : 0;
+            report(nps);
+            lastNodes = nodes;
+            lastReportedAt = now;
+        }
+    }
+
+    MateSearchState& state_;
+    std::vector<MateSearchState>& workers_;
+    const std::shared_ptr<HashGrowthPool>& hashPool_;
+    std::atomic<int>& level_;
+    std::chrono::steady_clock::time_point started_;
+    std::atomic<bool> stopped_{false};
+    std::thread reporter_;
+};
+
+MateSearchState& defaultMateSearchState() {
+    static MateSearchState state;
+    return state;
+}
+
+std::vector<MateSearchState>& defaultMateSearchWorkers() {
+    static std::vector<MateSearchState> workers;
+    return workers;
+}
+
+std::shared_ptr<HashGrowthPool>& defaultMateSearchHashPool() {
+    static std::shared_ptr<HashGrowthPool> pool;
+    return pool;
+}
+
+void resetDefaultMateSearchHashPool() {
+    defaultMateSearchHashPool().reset();
+    defaultMateSearchState().tt.resizeSlots(TranspositionTable::INITIAL_SLOTS);
+    for (MateSearchState& worker : defaultMateSearchWorkers())
+        worker.tt.resizeSlots(TranspositionTable::INITIAL_SLOTS);
+}
+
+void configureSearchHashTables(MateSearchState& state, std::vector<MateSearchState>& workers,
+                               std::shared_ptr<HashGrowthPool>& pool) {
+    if (!pool) {
+        const uint64_t maximumBytes = maximumHashBytes();
+        const uint64_t initialBytes = std::min(HASH_GIB, maximumBytes);
+        const size_t threadCount = workers.size() + 1;
+        const size_t slotsPerThread = std::max<size_t>(
+            1, static_cast<size_t>(initialBytes / TranspositionTable::ENTRY_BYTES / threadCount));
+        state.tt.resizeSlots(slotsPerThread);
+        for (MateSearchState& worker : workers) worker.tt.resizeSlots(slotsPerThread);
+        const uint64_t allocatedBytes = static_cast<uint64_t>(slotsPerThread) *
+            TranspositionTable::ENTRY_BYTES * threadCount;
+        pool = std::make_shared<HashGrowthPool>(allocatedBytes, maximumBytes);
+        sendLine("info string hash allocated allocatedMiB=" +
+                 std::to_string(allocatedBytes / HASH_MIB) +
+                 " initialTargetMiB=1024 threads=" + std::to_string(threadCount) +
+                 " growthChunkMiB=1024 thresholdPercent=90 maxMiB=" +
+                 std::to_string(maximumBytes / HASH_MIB));
+    }
+    auto grow = [shared = pool](TranspositionTable& table) { return shared->grow(table); };
+    state.growHashTable = grow;
+    state.nextHashGrowthCheck = 0;
+    for (MateSearchState& worker : workers) {
+        worker.growHashTable = grow;
+        worker.nextHashGrowthCheck = 0;
+    }
+}
+
 // Session cache theo tung nhanh. Luu TT/witness va moc budget da quet tron. Day la WARM RESTART:
 // stack de-quy dang do chua duoc serialize, nhung slice sau khong xoa TT va khong quet lai cac moc
 // budget da PROVEN. Giao thuc tach rieng de UI khong nham no voi true tree resume.
@@ -148,12 +362,12 @@ std::unordered_map<std::string, std::unique_ptr<SearchSession>> g_searchSessions
 // LÚC với st.tt.clear(), giống hệt cách st (luồng chính) đã được đối xử từ trước. Đo thật cho thấy
 // cấp phát lại TranspositionTable 16 MB mỗi lần gọi (như bản tách-gốc-thô cũ vẫn làm) không phải
 // nguyên nhân chính gây chậm, nhưng vẫn là lãng phí không cần — giữ ấm luôn cho tiện.
-// Cố định 3 worker phụ (đủ cho tối đa 4 luồng: 1 "anh cả" tuần tự + 3 luồng phụ) — khớp trần 4 luồng
-// cũ của bản tách-gốc-thô.
+// Tối đa 3 worker phụ; luồng gọi cũng làm việc nên tổng số luồng tìm kiếm tối đa là 4.
 constexpr int MATE_HELPER_POOL_SIZE = 3;
 
 void ensureWorkerPool(std::vector<MateSearchState>& workers, const MateSearchState& templ) {
-    if (static_cast<int>(workers.size()) < MATE_HELPER_POOL_SIZE) workers.resize(MATE_HELPER_POOL_SIZE);
+    const int required = std::min(MATE_HELPER_POOL_SIZE, std::max(0, g_threads - 1));
+    if (static_cast<int>(workers.size()) != required) workers.resize(static_cast<size_t>(required));
     for (auto& w : workers) {
         w.restrictedSide = templ.restrictedSide;
         w.checkStreakLimit = templ.checkStreakLimit;
@@ -173,6 +387,12 @@ i64 totalNodes(const MateSearchState& st, const std::vector<MateSearchState>& wo
     i64 n = st.nodeCounter;
     for (const auto& w : workers) n += w.nodeCounter;
     return n;
+}
+
+size_t totalHashUsed(const MateSearchState& st, const std::vector<MateSearchState>& workers) {
+    size_t used = st.tt.used();
+    for (const auto& w : workers) used += w.tt.used();
+    return used;
 }
 
 void captureSession(SearchSession& session) {
@@ -234,74 +454,76 @@ SearchResult searchMateRootParallel(Board& board, Color color, int redBudget, in
         return result;
     };
 
-    if (requestedThreads <= 1) return singleThreaded();
+    if (requestedThreads <= 1 || std::min(redBudget, blackBudget) <= 2) return singleThreaded();
 
     std::vector<Move> rootMoves = forcedMateRootMoves(board, color, st);
-    int workerCount = std::min({std::max(1, requestedThreads), 4, static_cast<int>(rootMoves.size())});
-    if (workerCount <= 1 || std::min(redBudget, blackBudget) <= 2 || rootMoves.size() < 16) {
-        return singleThreaded();
-    }
+    const int threadCount = std::min({requestedThreads, static_cast<int>(workers.size()) + 1,
+                                      static_cast<int>(rootMoves.size())});
+    if (threadCount <= 1 || rootMoves.size() < 16) return singleThreaded();
 
-    // "Anh cả": dò nước gốc tốt nhất TUẦN TỰ trên st (TT chính, đã ấm) để nâng alpha trước.
-    std::vector<Move> firstMove{rootMoves[0]};
-    SearchResult best = negamaxForcedMateRootSubsetGen(board, color, redBudget, blackBudget,
-        firstMove, alpha, beta, h1, h2, csRed, csBlack, st);
-    if (best.score > MATE_THRESHOLD || best.score < -MATE_THRESHOLD) {
+    struct Candidate {
+        SearchResult result;
+        size_t index = 0;
+        bool valid = false;
+    };
+    std::vector<Candidate> candidates(static_cast<size_t>(threadCount));
+    std::atomic<i32> sharedAlpha{alpha};
+    std::atomic<size_t> nextMove{0};
+    auto runWorker = [&](int workerIndex, Board& localBoard) {
+        MateSearchState& local = workerIndex == 0 ? st : workers[static_cast<size_t>(workerIndex - 1)];
+        Candidate& candidate = candidates[static_cast<size_t>(workerIndex)];
+        local.cancelled = st.cancelled;
+        local.deadline = st.deadline;
+        local.ktcBudgetOn = st.ktcBudgetOn;
+        local.ktcExemptColor = st.ktcExemptColor;
+        while (!local.isCancelled() && !local.timeUp()) {
+            const size_t index = nextMove.fetch_add(1, std::memory_order_relaxed);
+            if (index >= rootMoves.size()) break;
+            const i32 windowAlpha = sharedAlpha.load(std::memory_order_relaxed);
+            if (windowAlpha >= beta) break;
+            SearchResult current = negamaxForcedMateRootSubsetGen(
+                localBoard, color, redBudget, blackBudget, std::vector<Move>{rootMoves[index]},
+                windowAlpha, beta, h1, h2, csRed, csBlack, local);
+            if (local.isCancelled() || local.timeUp()) break;
+            if (current.score > windowAlpha &&
+                (!candidate.valid || current.score > candidate.result.score ||
+                 (current.score == candidate.result.score && index < candidate.index))) {
+                candidate.result = std::move(current);
+                candidate.index = index;
+                candidate.valid = true;
+            }
+            i32 previous = sharedAlpha.load(std::memory_order_relaxed);
+            while (candidate.valid && candidate.result.score > previous &&
+                   !sharedAlpha.compare_exchange_weak(previous, candidate.result.score,
+                                                      std::memory_order_relaxed)) {}
+        }
+    };
+
+    std::vector<std::thread> pool;
+    pool.reserve(static_cast<size_t>(threadCount - 1));
+    for (int workerIndex = 1; workerIndex < threadCount; ++workerIndex) {
+        pool.emplace_back([&, workerIndex, localBoard = board]() mutable {
+            runWorker(workerIndex, localBoard);
+        });
+    }
+    runWorker(0, board);
+    for (std::thread& worker : pool) worker.join();
+
+    SearchResult best;
+    best.score = alpha;
+    size_t bestIndex = rootMoves.size();
+    for (const Candidate& candidate : candidates) {
+        if (candidate.valid && (candidate.result.score > best.score ||
+            (candidate.result.score == best.score && candidate.index < bestIndex))) {
+            best = candidate.result;
+            bestIndex = candidate.index;
+        }
+    }
+    if (bestIndex < rootMoves.size() &&
+        (best.score > MATE_THRESHOLD || best.score < -MATE_THRESHOLD)) {
         std::vector<Move> witness = rebuildMateWitnessLine(board, color, redBudget, blackBudget,
                                                             csRed, csBlack, st);
         if (!witness.empty()) best.line = std::move(witness);
-    }
-    i32 sharedAlpha = std::max(alpha, best.score);
-    if (sharedAlpha >= beta || rootMoves.size() == 1 || st.isCancelled() || st.timeUp()) {
-        return best;
-    }
-
-    int helperCount = std::min({workerCount - 1, static_cast<int>(rootMoves.size()) - 1,
-                                 static_cast<int>(workers.size())});
-    if (helperCount < 1) return best;
-
-    struct WorkerResult { SearchResult best; };
-    std::vector<WorkerResult> results(static_cast<size_t>(helperCount));
-    for (auto& r : results) r.best = best;  // hạt giống bằng kết quả "anh cả", không bao giờ thấp hơn
-    std::atomic<i32> atomAlpha{sharedAlpha};
-    std::atomic<size_t> nextMove{1};  // nước 0 đã dò xong ở trên, luồng phụ bắt đầu từ nước 1
-    std::vector<std::thread> pool;
-    pool.reserve(static_cast<size_t>(helperCount));
-
-    for (int workerIndex = 0; workerIndex < helperCount; ++workerIndex) {
-        pool.emplace_back([&, workerIndex] {
-            Board localBoard = board;
-            MateSearchState& local = workers[static_cast<size_t>(workerIndex)];
-            local.cancelled = st.cancelled;
-            local.deadline = st.deadline;
-            local.ktcBudgetOn = st.ktcBudgetOn;
-            local.ktcExemptColor = st.ktcExemptColor;
-            WorkerResult& result = results[static_cast<size_t>(workerIndex)];
-
-            while (!local.isCancelled() && !local.timeUp()) {
-                size_t index = nextMove.fetch_add(1, std::memory_order_relaxed);
-                if (index >= rootMoves.size()) break;
-                i32 a = atomAlpha.load(std::memory_order_relaxed);
-                if (a >= beta) break;  // luồng khác đã tìm ra cutoff, khỏi dò thêm
-                std::vector<Move> oneMove{rootMoves[index]};
-                SearchResult current = negamaxForcedMateRootSubsetGen(
-                    localBoard, color, redBudget, blackBudget, oneMove, a, beta,
-                    h1, h2, csRed, csBlack, local);
-                if (current.score > MATE_THRESHOLD || current.score < -MATE_THRESHOLD) {
-                    std::vector<Move> witness = rebuildMateWitnessLine(localBoard, color, redBudget, blackBudget,
-                                                                        csRed, csBlack, local);
-                    if (!witness.empty()) current.line = std::move(witness);
-                }
-                if (current.score > result.best.score) result.best = std::move(current);
-                i32 prev = atomAlpha.load(std::memory_order_relaxed);
-                while (current.score > prev && !atomAlpha.compare_exchange_weak(prev, current.score)) {}
-            }
-        });
-    }
-    for (auto& worker : pool) worker.join();
-
-    for (const WorkerResult& result : results) {
-        if (result.best.score > best.score) best = result.best;
     }
     return best;
 }
@@ -330,7 +552,7 @@ ProbeResult probeForcedMate(Board& board, Color color, int redBudget, int blackB
                                                  hp.h1, hp.h2, csRed, csBlack, st, workers, threads);
     st.ktcExemptColor = savedExempt;
     if (loss.score < -MATE_THRESHOLD) return {true, loss.score, loss.line};
-    return {false, 0, {}};
+    return {false, loss.score, loss.line};
 }
 
 PositionalSearchState makePositionalWorkerState(const PositionalSearchState& base) {
@@ -413,48 +635,55 @@ std::string formatPv(const std::vector<Move>& line) {
 }
 
 // Đào sâu dần budget fromBudget..N — khớp cấu trúc nextDepth() trong runDeepeningAnalysisChunked
-// (xiangqi-analyzer.html:3853-3903), thu gọn cho một luồng (chưa chia pool đa luồng). fromBudget=1
-// là lượt "Bắt Đầu Phân Tích" bình thường; fromBudget>1 là "Tiếp Tục Phân Tích" — các mức
-// 1..fromBudget-1 app đã biết CHẮC CHẮN không có thắng ép (đã quét cạn xong ở lượt "go" trước),
-// nên bỏ qua, không quét lại — mọi giây mới xin thêm dồn thẳng cho mức tiếp theo trở đi.
+// (xiangqi-analyzer.html:3853-3903). Mức mới luôn bắt đầu từ gốc, nhưng giữ TT/witness giữa các
+// mức: ngân sách còn lại là một phần khóa nên chỉ trạng thái tương đương mới được tái sử dụng.
+// fromBudget>1 bỏ qua các mức thấp hơn đã được xác nhận hoàn tất ở lượt trước.
 void runGoBudget(int maxBudget, long long movetimeMs, int fromBudget, SearchSession* session = nullptr) {
     if (maxBudget < 1 || maxBudget > UNLIMITED_MAX_BUDGET_PER_SIDE || fromBudget > maxBudget)
         throw std::invalid_argument("budget must be 1..60 and from <= budget");
     if (movetimeMs < 0 || movetimeMs > 86400000) throw std::invalid_argument("invalid movetime");
-    auto t0 = std::chrono::steady_clock::now();
-    auto deadline = (movetimeMs > 0)
-        ? t0 + std::chrono::milliseconds(movetimeMs)
-        : std::chrono::steady_clock::time_point::max();
-
-    auto freshState = session ? nullptr : std::make_unique<MateSearchState>();
-    MateSearchState& st = session ? session->state : *freshState;
+    MateSearchState& st = session ? session->state : defaultMateSearchState();
     st.restrictedSide = g_restrictedSide;
     st.checkStreakLimit = g_checkStreakLimit;
     st.checkStreakBonusRuleOn = g_checkStreakBonusRuleOn;
     st.ktcBudgetOn = g_ktcBudgetOn;
     st.cancelled = &g_cancelled;
-    st.deadline = deadline;  // để một mức budget đang chạy dở tự dừng đúng hạn, không tràn qua giờ
-                              // (đã thấy thật: xin movetime 3s nhưng chạy tới 15s — vòng lặp NGOÀI
-                              // chỉ kiểm tra giờ GIỮA các mức, một mức chạy lâu vẫn không bị chặn).
-    auto freshWorkers = session ? nullptr : std::make_unique<std::vector<MateSearchState>>();
-    std::vector<MateSearchState>& workers = session ? session->workers : *freshWorkers;
+    std::vector<MateSearchState>& workers = session ? session->workers : defaultMateSearchWorkers();
     ensureWorkerPool(workers, st);
+    configureSearchHashTables(st, workers, defaultMateSearchHashPool());
+    auto t0 = std::chrono::steady_clock::now();
+    auto deadline = (movetimeMs > 0)
+        ? t0 + std::chrono::milliseconds(movetimeMs)
+        : std::chrono::steady_clock::time_point::max();
+    st.deadline = deadline;  // cấp hash là khởi tạo tài nguyên, không tính vào thời lượng tìm kiếm.
+    g_progressNodes.store(0, std::memory_order_relaxed);
+    std::atomic<int> progressLevel{std::max(1, fromBudget)};
+    SearchProgressReporter progressReporter(st, workers, defaultMateSearchHashPool(), progressLevel, t0);
 
     Board board = g_board;
     Color color = g_sideToMove;
     if (session) fromBudget = std::max(fromBudget, session->completedBudget + 1);
     int doneBudget = session ? session->completedBudget : (fromBudget > 1 ? fromBudget - 1 : 0);
     ProbeResult lastMate;
+    std::vector<Move> lastHoldLine;
     bool foundMate = false;
+
+    if (!session) {
+        st.tt.clear();
+        st.mateWitness.clear();
+        clearWorkerPool(workers);
+    }
 
     for (int budget = std::max(1, fromBudget); budget <= maxBudget; ++budget) {
         if (g_cancelled.load() || std::chrono::steady_clock::now() > deadline) break;
+        progressLevel.store(budget, std::memory_order_relaxed);
 
-        if (!session || session->activeBudget != budget) {
-            st.tt.clear();
-            st.mateWitness.clear();
-            clearWorkerPool(workers);
-            if (session) session->activeBudget = budget;
+        if (session && session->activeBudget != budget) {
+            if (session->activeBudget > 0) {
+                sendLine("info string session cache level=" + std::to_string(budget) +
+                         " retainedSlots=" + std::to_string(totalHashUsed(st, workers)));
+            }
+            session->activeBudget = budget;
         }
         Board scratch = board;
         ProbeResult res = probeForcedMate(scratch, color, budget, budget,
@@ -481,11 +710,13 @@ void runGoBudget(int maxBudget, long long movetimeMs, int fromBudget, SearchSess
             break;  // budget đầu tiên chứng minh được mate CHÍNH LÀ số nước tối thiểu — dừng ngay,
                     // khớp :2020-2045 (mateDepth tăng dần, gặp mate là chốt, không đào tiếp).
         } else {
+            lastHoldLine = std::move(res.line);
             std::ostringstream line;
             line << "info depth " << budget << " score cp 0 nodes " << totalNodes(st, workers) << " time " << elapsedMs;
             sendLine(line.str());
         }
     }
+    progressReporter.stop();
 
     if (session) {
         session->accumulatedMs += std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -493,7 +724,8 @@ void runGoBudget(int maxBudget, long long movetimeMs, int fromBudget, SearchSess
         session->sliceCount++;
         std::ostringstream progress;
         progress << "info string session warm accumulated " << session->accumulatedMs
-                 << " slices " << session->sliceCount << " completed " << session->completedBudget;
+                 << " slices " << session->sliceCount << " completed " << session->completedBudget
+                 << " ttUsed=" << totalHashUsed(st, workers);
         sendLine(progress.str());
     }
 
@@ -509,7 +741,7 @@ void runGoBudget(int maxBudget, long long movetimeMs, int fromBudget, SearchSess
         sendLine("bestmove " + (lastMate.line.empty() ? "(none)" : moveToUci(lastMate.line[0])));
     } else if (doneBudget >= maxBudget) {
         sendLine("info string outcome draw");  // đã quét TRỌN maxBudget, không có thắng ép — chắc chắn
-        sendLine("bestmove (none)");
+        sendLine("bestmove " + (lastHoldLine.empty() ? "(none)" : moveToUci(lastHoldLine[0])));
     } else {
         sendLine("info string outcome partial");  // hết giờ giữa chừng, chưa quét hết maxBudget
         sendLine("bestmove (none)");
@@ -532,28 +764,34 @@ void runGoBudgetPair(int redBudget, int blackBudget, long long movetimeMs, Searc
     if (redBudget < 0 || blackBudget < 0 || redBudget > UNLIMITED_MAX_BUDGET_PER_SIDE || blackBudget > UNLIMITED_MAX_BUDGET_PER_SIDE)
         throw std::invalid_argument("budgets must be 0..60");
     if (movetimeMs < 0 || movetimeMs > 86400000) throw std::invalid_argument("invalid movetime");
-    auto t0 = std::chrono::steady_clock::now();
-    auto deadline = (movetimeMs > 0)
-        ? t0 + std::chrono::milliseconds(movetimeMs)
-        : std::chrono::steady_clock::time_point::max();
-
-    auto freshState = session ? nullptr : std::make_unique<MateSearchState>();
-    MateSearchState& st = session ? session->state : *freshState;
+    MateSearchState& st = session ? session->state : defaultMateSearchState();
     st.restrictedSide = g_restrictedSide;
     st.checkStreakLimit = g_checkStreakLimit;
     st.checkStreakBonusRuleOn = g_checkStreakBonusRuleOn;
     st.ktcBudgetOn = g_ktcBudgetOn;
     st.cancelled = &g_cancelled;
-    st.deadline = deadline;
-    auto freshWorkers = session ? nullptr : std::make_unique<std::vector<MateSearchState>>();
-    std::vector<MateSearchState>& workers = session ? session->workers : *freshWorkers;
+    std::vector<MateSearchState>& workers = session ? session->workers : defaultMateSearchWorkers();
     ensureWorkerPool(workers, st);
+    configureSearchHashTables(st, workers, defaultMateSearchHashPool());
+    if (!session) {
+        st.reset();
+        clearWorkerPool(workers);
+    }
+    auto t0 = std::chrono::steady_clock::now();
+    auto deadline = (movetimeMs > 0)
+        ? t0 + std::chrono::milliseconds(movetimeMs)
+        : std::chrono::steady_clock::time_point::max();
+    st.deadline = deadline;
+    g_progressNodes.store(0, std::memory_order_relaxed);
+    std::atomic<int> progressLevel{std::max(redBudget, blackBudget)};
+    SearchProgressReporter progressReporter(st, workers, defaultMateSearchHashPool(), progressLevel, t0);
 
     Board board = g_board;
     Color color = g_sideToMove;
     Board scratch = board;
     ProbeResult res = probeForcedMate(scratch, color, std::max(0, redBudget), std::max(0, blackBudget),
                                       g_csRootRed, g_csRootBlack, st, workers, g_threads);
+    progressReporter.stop();
     if (session) {
         session->accumulatedMs += std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - t0).count();
@@ -593,7 +831,7 @@ void runGoBudgetPair(int redBudget, int blackBudget, long long movetimeMs, Searc
         line << "info depth " << depth << " score cp 0 nodes " << totalNodes(st, workers) << " time " << elapsedMs;
         sendLine(line.str());
         sendLine("info string outcome draw");
-        sendLine("bestmove (none)");
+        sendLine("bestmove " + (res.line.empty() ? "(none)" : moveToUci(res.line[0])));
     }
     g_searching = false;
 }
@@ -606,15 +844,16 @@ void runGoDrawLine(int redBudget, int blackBudget) {
         throw std::invalid_argument("budgets must be 0..60");
     auto t0 = std::chrono::steady_clock::now();
 
-    MateSearchState st;
+    MateSearchState& st = defaultMateSearchState();
     st.restrictedSide = g_restrictedSide;
     st.checkStreakLimit = g_checkStreakLimit;
     st.checkStreakBonusRuleOn = g_checkStreakBonusRuleOn;
     st.ktcBudgetOn = g_ktcBudgetOn;
     st.cancelled = &g_cancelled;
     st.deadline = std::chrono::steady_clock::time_point::max();
-    std::vector<MateSearchState> workers;
+    std::vector<MateSearchState>& workers = defaultMateSearchWorkers();
     ensureWorkerPool(workers, st);
+    configureSearchHashTables(st, workers, defaultMateSearchHashPool());
 
     Board board = g_board;
     Color side = g_sideToMove;
@@ -767,23 +1006,26 @@ void handleSetOption(std::istringstream& iss) {
     if (!value.empty() && value[0] == ' ') value.erase(0, 1);
 
     if (name == "Threads") {
-        // ĐÃ THỬ đổi searchMateRootParallel sang YBWC (anh cả tuần tự nâng alpha trước, luồng phụ
-        // đọc/ghi CHUNG một atomic<i32> alpha) và ĐO LẠI BẰNG main.cpp THẬT (không phải harness cô
-        // lập) — nhiều lần, tách riêng thời gian từng mức budget, trên chính thế cờ đã dùng để thiết
-        // kế cơ chế này. Kết quả: CHẬM HƠN đơn luồng ở MỌI số luồng thử (2, 3, 4), càng nhiều luồng
-        // càng chậm hơn (số nút tăng 1.2x → 3.6x), không có mức nào có lãi ròng — khác hẳn kết quả
-        // "nhanh hơn 1.6x" đo được trong một harness cô lập trước đó, hoá ra là do so sánh hai lượt
-        // chạy không cùng lúc trên máy có tốc độ CPU dao động (đo lặp lại mới lộ ra). Với threads=2
-        // cụ thể còn có lỗi thiết kế: chỉ có 1 luồng phụ nên "anh cả" (tuần tự) và luồng phụ KHÔNG
-        // BAO GIỜ chạy chồng lên nhau (anh cả xong hẳn rồi mới spawn luồng phụ) — không có tí song
-        // song thật nào, chỉ thêm chi phí atomic + tạo luồng. Từ threads=3 trở lên (luồng phụ chạy
-        // chồng lên nhau thật) vẫn chậm hơn — search-overhead (mất chia sẻ alpha giữa CÁC luồng phụ
-        // với NHAU) thắng thế, y hệt lỗi của bản tách-gốc-thô cũ.
-        // => Giữ khoá về 1 luồng, y như quyết định ban đầu — nhưng giờ có số đo thật, không phải suy
-        // đoán. Code YBWC ở searchMateRootParallel GIỮ NGUYÊN (đúng, đã kiểm chứng cho kết quả giống
-        // hệt đơn luồng ở mọi trường hợp) để ai muốn thử tiếp (ví dụ đo trên bàn cờ đông quân hơn,
-        // hoặc máy nhiều lõi thật hơn) có sẵn hạ tầng, không phải viết lại từ đầu.
-        g_threads = 1;
+        try {
+            const int threads = std::clamp(std::stoi(value), 1, MATE_HELPER_POOL_SIZE + 1);
+            if (threads != g_threads) {
+                g_threads = threads;
+                resetDefaultMateSearchHashPool();
+                g_searchSessions.clear();
+            }
+        }
+        catch (const std::exception&) { sendLine("info string ERROR: invalid Threads value"); }
+    } else if (name == "HashReserveMiB") {
+        try {
+            const int reserveMiB = std::clamp(std::stoi(value), 0, 32768);
+            if (reserveMiB != g_hashReserveMiB) {
+                g_hashReserveMiB = reserveMiB;
+                resetDefaultMateSearchHashPool();
+                g_searchSessions.clear();
+            }
+        } catch (const std::exception&) {
+            sendLine("info string ERROR: invalid HashReserveMiB value");
+        }
     }
     else if (name == "CheckStreak_RestrictedColor") {
         // "both" = cả hai bên bị giới hạn (chế độ Duyệt & Điều Khiển của app); "white"/"black" =
@@ -868,7 +1110,8 @@ bool executeCommandLine(const std::string& line) {
         if (cmd == "bruteforce") {
             sendLine("id name Brute-force");
             sendLine("id author cong dong du an Xiangqi Analyzer");
-            sendLine("option name Threads type spin default 1 min 1 max 32");
+            sendLine("option name Threads type spin default 1 min 1 max 4");
+            sendLine("option name HashReserveMiB type spin default 0 min 0 max 32768");
             sendLine("option name CheckStreak_RestrictedColor type string default none");
             sendLine("option name CheckStreak_Limit type spin default 2 min 1 max 20");
             sendLine("option name CheckStreak_BonusRule type check default false");

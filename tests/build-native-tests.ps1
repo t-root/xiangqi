@@ -13,4 +13,6 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $probeSources = @('movegen.cpp','rules.cpp','hash.cpp','fen.cpp') | ForEach-Object { Join-Path $sourceRoot $_ }
 & $compiler '-std=c++17' '-O2' '-static' '-static-libgcc' '-static-libstdc++' '-I' $sourceRoot '-o' (Join-Path $outputRoot 'debug_root_streak.exe') (Join-Path $testRoot 'native/debug_root_streak.cpp') @probeSources
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& $compiler '-std=c++17' '-O2' '-static' '-static-libgcc' '-static-libstdc++' '-I' $sourceRoot '-o' (Join-Path $outputRoot 'piece_square_set.exe') (Join-Path $testRoot 'native/piece_square_set.cpp') (Join-Path $sourceRoot 'fen.cpp') (Join-Path $sourceRoot 'movegen.cpp')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Output 'Diagnostic binaries rebuilt under tests/binaries.'
