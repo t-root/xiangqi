@@ -455,31 +455,6 @@ try {
 New-Item -ItemType Directory -Force -Path $bruteforceDest | Out-Null
 Copy-Item -LiteralPath $bruteforceOut -Destination (Join-Path $bruteforceDest 'bruteforce.exe') -Force
 
-# Bản Linux x86-64 của Brute-force (liên kết tĩnh, để chạy trên máy/VPS Linux), đặt trong engine/bruteforce/linux/ cùng file hướng dẫn.
-# Dựng qua WSL vì máy Windows không có g++ cho Linux. Không bắt buộc: thiếu WSL/g++ chỉ cảnh báo, không làm
-# hỏng build chính. Chỉ dùng thủ công (scp lên VPS); app Windows không nạp file này và pkg không đóng gói nó.
-$wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
-if ($wsl) {
-    Write-Host 'Dang dung Brute-force cho Linux (WSL)...'
-    $linuxOut = Join-Path $bruteforceDest 'linux\bruteforce-linux-x64'
-    New-Item -ItemType Directory -Force -Path (Split-Path $linuxOut) | Out-Null
-    Push-Location $bruteforceSrc
-    try {
-        # Đường dẫn tương đối để khỏi phải đổi sang dạng /mnt/c/...; WSL giữ nguyên thư mục hiện tại.
-        & $wsl.Source -- g++ -std=c++17 -O3 -pthread -static -o ../../bruteforce/linux/bruteforce-linux-x64 @bruteforceSources 2>&1 |
-            ForEach-Object { "$_" -replace "`0", '' }
-        if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $linuxOut)) {
-            Write-Host "Xong: $linuxOut"
-        } else {
-            Write-Host 'CANH BAO: khong dung duoc ban Linux (WSL thieu g++ hoac chua cai distro). Ban Windows van binh thuong.' -ForegroundColor Yellow
-        }
-    } finally {
-        Pop-Location
-    }
-} else {
-    Write-Host 'Bo qua ban Linux: khong tim thay wsl.exe.' -ForegroundColor Yellow
-}
-
 if ($Mode -ieq 'engines') {
     Write-Host '=== Dung engine xong ==='
     exit 0
