@@ -171,17 +171,35 @@ SearchResult negamaxForcedMateGen(Board& b, Color color, int redBudget, int blac
     bool haveOppKing = csRestricted(st.restrictedSide, color) &&
         findKing(b, opp, oppKing);  // khớp :3344
     CsCode myStreak = isRed ? csRed : csBlack;
+    const int kr = kingSquare.row, kc = kingSquare.col;
 
     for (const ScoredMove& move : moves) {
         bool ktcSkip = isKtcBudgetSkip(move, color, st, inCheckNow);
         Piece captured = makeMoveInPlace(b, move);
         st.pieceSquares.apply(move, color, captured);
 
-        Square myKing = (move.piece.type == PieceType::King) ? move.to : kingSquare;
-        if (isKingAttacked(b, color, myKing)) {
-            undoMoveInPlace(b, move, captured);
-            st.pieceSquares.undo(move, color, captured);
-            continue;
+        // Chỉ nước CÓ THỂ hở Tướng mới cần dò isKingAttacked (đường nóng đắt nhất mỗi node). Điều kiện
+        // dưới đây BẢO THỦ — không bao giờ bỏ qua một nước thật ra phạm luật — nên tập nước hợp lệ,
+        // thứ tự và số node giữ y HỆT bản gốc (đã đối chiếu byte-for-byte):
+        //   * đang bị chiếu: mọi nước đều phải dò;
+        //   * nước của Tướng: Tướng tự dời chỗ, phải dò;
+        //   * from/to nằm trên hàng hoặc cột đi qua Tướng: có thể lộ Xe/Pháo/Tướng-đối-mặt dọc đường,
+        //     và cũng bao trọn mọi thay đổi màn pháo trên đường của Tướng;
+        //   * from kề chéo Tướng: đúng 4 ô chân Mã quanh Tướng — bỏ trống ô này có thể lộ Mã chiếu.
+        // Mọi nước khác không thể làm Tướng mình bị chiếu nên hợp lệ ngay, khỏi dò.
+        const bool mustTest = inCheckNow
+            || move.piece.type == PieceType::King
+            || move.from.row == kr || move.from.col == kc
+            || move.to.row == kr || move.to.col == kc
+            || ((move.from.row - kr == 1 || kr - move.from.row == 1) &&
+                (move.from.col - kc == 1 || kc - move.from.col == 1));
+        if (mustTest) {
+            Square myKing = (move.piece.type == PieceType::King) ? move.to : kingSquare;
+            if (isKingAttacked(b, color, myKing)) {
+                undoMoveInPlace(b, move, captured);
+                st.pieceSquares.undo(move, color, captured);
+                continue;
+            }
         }
         ++legalCount;
 
