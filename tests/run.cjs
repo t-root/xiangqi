@@ -16,6 +16,8 @@ suite.push('analysis-engine-lines.cjs');
 suite.push('analysis-progress-visibility.cjs');
 suite.push('bf-hash-sessions.cjs');
 suite.push('bf-node-count.cjs');
+suite.push('bf-threads-hold-move.cjs');
+suite.push('guide-hold-probe-progress.cjs');
 suite.push('trial-verdict.cjs');
 suite.push('https-dual-port.cjs');
 for(const file of suite){

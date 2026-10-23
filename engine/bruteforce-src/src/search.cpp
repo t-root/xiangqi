@@ -356,10 +356,10 @@ SearchResult negamaxForcedMateRootSubsetGen(Board& b, Color color, int redBudget
             best = score;
             bestCode = moveCode(move.from, move.to) + 1;
             bestLine.clear();
-            if (score > MATE_THRESHOLD || score < -MATE_THRESHOLD) {
-                bestLine.push_back(move);
-                if (haveRes) bestLine.insert(bestLine.end(), res.line.begin(), res.line.end());
-            }
+            // Gốc luôn ghi nước tốt nhất (như negamaxForcedMateGen ở ply 0), kể cả khi điểm không phải
+            // mate: bằng chứng hòa/giữ mốc phải trả được nước giữ, không để Threads>=2 trả (none).
+            bestLine.push_back(move);
+            if (haveRes) bestLine.insert(bestLine.end(), res.line.begin(), res.line.end());
         }
         if (best > alpha) alpha = best;
         if (alpha >= beta) break;
