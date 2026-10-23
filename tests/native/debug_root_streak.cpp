@@ -1,4 +1,4 @@
-// Đối chiếu luật chuỗi chiếu của Brute-force với Engine Web: CÙNG tám thế cờ, cùng thứ tự, in ra
+// Đối chiếu luật chuỗi chiếu của Brute-force: CÙNG tám thế cờ, cùng thứ tự, in ra
 // cùng một định dạng để so từng dòng với bản chạy trên trình duyệt (.cs-probe.js của app).
 // Trọng tâm: quân giữ chuỗi là quân ĐANG THẬT SỰ chiếu, nên chiếu mở/chiếu đôi phải tính cho Xe,
 // không phải cho quân vừa đi.

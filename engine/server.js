@@ -91,21 +91,8 @@ const VISION_FILES = [
     'vision/models/online_xiangqi_classifier.onnx',
 ];
 
-const PIKAFISH_WEB_FILES = [
-    'pikafish.js',
-    'pikafish.wasm',
-    'pikafish.data',
-];
-const BRUTEFORCE_WEB_FILES = [
-    'bruteforce.js',
-    'bruteforce.wasm',
-];
-
-// Pikafish Web: 4 file WASM/JS/data/nnue trình duyệt tải qua HTTP khi người dùng chọn engine thứ 4.
-// Cũng phải bung ra đĩa cạnh file .exe khi đóng gói, vì giống xiangqi-analyzer.html, chúng nằm
-// trong snapshot ảo của pkg và trình duyệt không fetch được trực tiếp từ đó. Đường dẫn trong pkg
-// "assets" bắt đầu bằng "../" vì file thật nằm ở thư mục gốc dự án (cạnh xiangqi-analyzer.html),
-// còn pkg chạy với cwd là engine/.
+// Đường dẫn trong pkg "assets" bắt đầu bằng "../" vì file thật nằm ở thư mục gốc dự án (cạnh
+// xiangqi-analyzer.html), còn pkg chạy với cwd là engine/.
 let PIKAFISH_DIR, PIKAFISH_EXE, BRUTEFORCE_DIR, BRUTEFORCE_EXE, HTML_PATH;
 if (isPkg) {
     console.log('Đang chuẩn bị file chạy (lần đầu có thể mất vài giây)...');
@@ -121,36 +108,12 @@ if (isPkg) {
 
     HTML_PATH = path.join(DATA_DIR, 'xiangqi-analyzer.html');
     ensureExtracted(path.join('..', 'xiangqi-analyzer.html'), HTML_PATH, true);
-    // Trang nạp file này ở đầu <head> (cho máy chủ tĩnh không đặt được header COOP/COEP, vd. app
-    // web-server trên điện thoại). Server này đã tự đặt header nên bản .exe chỉ cần bung ra đĩa để
-    // không 404 và để chép cả thư mục xiangqi_data sang máy khác là chạy được.
-    try { ensureExtracted(path.join('..', 'coi-serviceworker.js'), path.join(DATA_DIR, 'coi-serviceworker.js'), true); }
-    catch (e) { console.warn(`Không bung được coi-serviceworker.js: ${e.message}`); }
 
     for (const rel of VISION_FILES) {
         // Thiếu file nhận diện thì app vẫn chạy được (tự lùi về nhánh dự phòng), nên không cho
         // một model hỏng làm chết cả server.
         try { ensureExtracted(path.join('..', rel), path.join(DATA_DIR, rel)); }
         catch (e) { console.warn(`Không bung được ${rel}: ${e.message}`); }
-    }
-
-    // Pikafish Web: cũng cần bung, NHƯNG thiếu thì engine này coi như không có — đừng làm app
-    // crash cứng khi người dùng không chọn Pikafish Web mà file đã lỡ xoá. Đường dẫn đích lấy từ
-    // DATA_DIR (cùng chỗ với xiangqi-analyzer.html) để static-server /pikafish-web/* hoạt động
-    // không cần sửa thêm.
-    for (const file of PIKAFISH_WEB_FILES) {
-        try {
-            ensureExtracted(path.join('..', 'pikafish-web', file), path.join(DATA_DIR, 'pikafish-web', file));
-        } catch (e) {
-            console.warn(`Không bung được Pikafish Web ${file}: ${e.message}`);
-        }
-    }
-    for (const file of BRUTEFORCE_WEB_FILES) {
-        try {
-            ensureExtracted(path.join('..', 'bruteforce-web', file), path.join(DATA_DIR, 'bruteforce-web', file));
-        } catch (e) {
-            console.warn(`Không bung được Brute-force Web ${file}: ${e.message}`);
-        }
     }
 
     // Package the TikTok auto-reply extension alongside the app so users can
@@ -167,7 +130,7 @@ if (isPkg) {
     PIKAFISH_DIR = path.join(__dirname, 'pikafish');
     PIKAFISH_EXE = path.join(PIKAFISH_DIR, 'pikafish-bmi2.exe');
     // Chạy trực tiếp từ output build mới nhất. Khi app đang mở, Windows khóa bản
-    // deploy cũ trong engine/bruteforce; dùng bản source-build này để Web/native
+    // deploy cũ trong engine/bruteforce; dùng bản source-build này để
     // luôn cùng một lõi, còn gói .exe cũng lấy chính file này qua pkg assets.
     BRUTEFORCE_DIR = path.join(__dirname, 'bruteforce-src', 'src');
     BRUTEFORCE_EXE = path.join(BRUTEFORCE_DIR, 'bruteforce.exe');
@@ -469,46 +432,27 @@ const MIME = {
     '.wasm': 'application/wasm',
     '.onnx': 'application/octet-stream',
 };
-// Pikafish Web (Emscripten WASM) reference SharedArrayBuffer khi dò tính năng thread lúc khởi tạo,
-// kể cả khi đã build đơn luồng. SharedArrayBuffer chỉ có khi trang ở trạng thái "cross-origin
-// isolated", tức là response phải có đủ:
-//   • Cross-Origin-Opener-Policy: same-origin       — cho phép SAB
-//   • Cross-Origin-Embedder-Policy: require-corp    — bắt buộc mọi sub-resource cũng phải CORP hoặc CORS
-//   • Cross-Origin-Resource-Policy: same-origin     — áp cho tài nguyên self-host để browser chấp nhận
-//     khi embedder yêu cầu CORP. Áp cho MỌI response của server này vì mọi file đều self-host, và
-//     Pikafish Web loader cũng load trực tiếp (cùng origin).
-// Lưu ý phạm vi: header này chỉ ảnh hưởng người dùng mở app qua http://localhost:9999 — không ảnh
-// hưởng WebSocket port 8899/8900 (Node ws không quan tâm COOP/COEP).
-const ISOLATION_HEADERS = {
-    'Cross-Origin-Opener-Policy': 'same-origin',
-    'Cross-Origin-Embedder-Policy': 'require-corp',
-    'Cross-Origin-Resource-Policy': 'same-origin',
-};
 const requestHandler = (req, res) => {
     // URL hỏng (vd. "/%") làm decodeURIComponent ném URIError; không bắt thì cả server + 2 bridge sập.
     let reqPath;
     try { reqPath = decodeURIComponent(req.url.split('?')[0]); }
-    catch (e) { res.writeHead(400, ISOLATION_HEADERS).end('Bad request'); return; }
+    catch (e) { res.writeHead(400).end('Bad request'); return; }
     const fileName = reqPath === '/' ? 'xiangqi-analyzer.html' : reqPath.replace(/^\//, '');
     const filePath = path.join(DATA_DIR, fileName);
     if (!filePath.startsWith(DATA_DIR) || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
-        res.writeHead(404, ISOLATION_HEADERS).end('Not found');
+        res.writeHead(404).end('Not found');
         return;
     }
-    res.writeHead(200, {
-        'Content-Type': MIME[path.extname(filePath)] || 'application/octet-stream',
-        ...ISOLATION_HEADERS,
-    });
+    res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath)] || 'application/octet-stream' });
     // File đang bị khóa/đọc lỗi giữa chừng: không có handler 'error' thì Node ném lỗi chưa bắt và sập.
     const stream = fs.createReadStream(filePath);
     stream.on('error', () => res.destroy());
     stream.pipe(res);
 };
 
-// --- HTTPS tự ký (để điện thoại/LAN chạy được engine Web) ----------------------------------------
-// Engine Web (WASM đa luồng) cần SharedArrayBuffer ⇒ trang phải "cross-origin isolated" ⇒ trình duyệt
-// chỉ cho phép ở secure context: https:// hoặc http://localhost. http://192.168.x.x thì KHÔNG. Cách
-// gọn nhất không cần tên miền/tunnel: tự ký một chứng chỉ chứa đúng các IP LAN của máy này. Lần đầu
+// --- HTTPS tự ký (để điện thoại/LAN dùng được các API chỉ có ở secure context) -------------------
+// Clipboard, micro... chỉ có ở secure context: https:// hoặc http://localhost. http://192.168.x.x thì
+// KHÔNG. Cách gọn nhất không cần tên miền/tunnel: tự ký một chứng chỉ chứa đúng các IP LAN của máy này. Lần đầu
 // mở, trình duyệt cảnh báo "không an toàn" → chọn tiếp tục; chỉ phải làm một lần cho mỗi thiết bị
 // (chứng chỉ được giữ lại giữa các lần chạy; chỉ tạo lại khi đổi IP LAN hoặc sắp hết hạn).
 const CERT_DIR = path.join(isPkg ? DATA_DIR : __dirname, 'certs');
@@ -584,7 +528,7 @@ function onHttpListening(hasHttps) { return () => {
     console.log(`Server tĩnh đang chạy tại ${localhostUrl}`);
     console.log(`  Từ mạng nội bộ: ${networkUrl}`);
     if (hasHttps) {
-        console.log(`  Điện thoại (HTTPS, chạy được cả engine Web): https://${localIP}:${HTTP_PORT}`);
+        console.log(`  Điện thoại (HTTPS): https://${localIP}:${HTTP_PORT}`);
         console.log(`     → lần đầu trình duyệt báo "không an toàn": chọn Nâng cao → Tiếp tục truy cập.`);
     }
     console.log(`  ⚠️ Nếu vẫn không kết nối:`);

@@ -105,9 +105,6 @@ if errorlevel 1 exit /b 1
 
 REM ==========================================================================
 REM ==========================================================================
-echo.
-echo Pikafish Web duoc build tu ma nguon Pikafish trong may.
-echo.
 
 REM ==========================================================================
 REM ==========================================================================
@@ -164,7 +161,6 @@ if defined ENGINES_ONLY (
     echo.
     echo === Dung engine xong ===
     echo Pikafish: %PIKAFISH_DEST%\pikafish-bmi2.exe
-    echo Pikafish Web: %PIKAFISH_WEB_DEST%\
     echo Brute-force: %BRUTEFORCE_DEST%\bruteforce.exe
     echo Chay lai khong kem tham so "engines" de dong goi ra dist\XiangqiAnalyzer.exe.
     pause
@@ -197,7 +193,6 @@ if not exist "%DIST_DIR%\XiangqiAnalyzer.exe" (
 echo.
 echo === Build completed successfully ===
 echo Pikafish: %PIKAFISH_DEST%\pikafish-bmi2.exe
-echo Pikafish Web: %PIKAFISH_WEB_DEST%\
 echo Brute-force: %BRUTEFORCE_DEST%\bruteforce.exe
 echo Ban dong goi: %DIST_DIR%\XiangqiAnalyzer.exe
 pause
@@ -428,17 +423,6 @@ $pikaDest = Join-Path $engineDir 'pikafish'
 $pikaDestExe = Join-Path $pikaDest 'pikafish-bmi2.exe'
 New-Item -ItemType Directory -Force -Path $pikaDest | Out-Null
 Copy-Item -LiteralPath $OutExe -Destination $pikaDestExe -Force
-
-# Rebuild the browser engine on every full build so it always matches Pikafish Native.
-Write-Host 'Dang build Pikafish Web tu cung ma nguon Pikafish...'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $ProjectRoot 'build-pikafish-web.ps1')
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-# Brute-force Web is the browser build of the exact native Brute-force core.
-# Rebuild it every full engine build so the .wasm cannot drift from bruteforce.exe.
-Write-Host 'Dang build Brute-force Web tu cung ma nguon Brute-force...'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $ProjectRoot 'build-bruteforce-web.ps1')
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $bruteforceSrc = Join-Path $engineDir 'bruteforce-src\src'
 $bruteforceDest = Join-Path $engineDir 'bruteforce'

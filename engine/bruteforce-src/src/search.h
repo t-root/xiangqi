@@ -55,6 +55,9 @@ struct ScoredMove : Move {
 // std::thread native có bản sao riêng, không cần khoá (mutex) trong đường nóng của tìm kiếm.
 struct MateSearchState {
     TranspositionTable tt;
+    // Bảng đã được cấp theo chính sách 1 GiB ban đầu chưa. Mỗi phiên/luồng có bảng RIÊNG nên phải
+    // tự được cấp một lần; nếu không, phiên tạo sau phiên đầu chỉ có bảng 16 MiB mặc định.
+    bool hashConfigured = false;
     std::vector<i32> mateHistoryScores = std::vector<i32>(NUM_SQUARES * NUM_SQUARES, 0);
     std::vector<i32> mateKillerA = std::vector<i32>(MATE_MAX_PLY, 0);
     std::vector<i32> mateKillerB = std::vector<i32>(MATE_MAX_PLY, 0);

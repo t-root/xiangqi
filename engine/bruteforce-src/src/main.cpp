@@ -44,9 +44,7 @@
 #include <stdexcept>
 #include <limits>
 
-#ifdef __EMSCRIPTEN__
-    #include <emscripten/emscripten.h>
-#elif defined(_WIN32)
+#if defined(_WIN32)
     #if !defined(NOMINMAX)
         #define NOMINMAX
     #endif
@@ -86,13 +84,7 @@ constexpr uint64_t HASH_GIB = uint64_t(1) << 30;
 constexpr uint64_t HASH_MIB = uint64_t(1) << 20;
 
 uint64_t totalPhysicalMemoryBytes() {
-#ifdef __EMSCRIPTEN__
-    const int memoryMiB = EM_ASM_INT({
-        const memoryGiB = globalThis.navigator && Number(navigator.deviceMemory);
-        return Math.max(256, Math.floor((Number.isFinite(memoryGiB) && memoryGiB > 0 ? memoryGiB : 2) * 1024));
-    });
-    return static_cast<uint64_t>(memoryMiB) * HASH_MIB;
-#elif defined(_WIN32)
+#if defined(_WIN32)
     MEMORYSTATUSEX status{};
     status.dwLength = sizeof(status);
     return GlobalMemoryStatusEx(&status) ? status.ullTotalPhys : 0;
@@ -106,9 +98,6 @@ uint64_t maximumHashBytes() {
     const uint64_t total = totalPhysicalMemoryBytes();
     if (!total) throw std::runtime_error("could not determine total physical memory for BF hash sizing");
     uint64_t maximum = (total / 3) * 2 + ((total % 3) * 2) / 3;
-#ifdef __EMSCRIPTEN__
-    maximum = std::min(maximum, uint64_t(2) * HASH_GIB);
-#endif
     const uint64_t reserve = static_cast<uint64_t>(g_hashReserveMiB) * HASH_MIB;
     return maximum > reserve ? maximum - reserve : 0;
 }
@@ -157,21 +146,19 @@ void startSearch(Function function, Args... args) {
     } catch (...) { g_searching = false; throw; }
 }
 
+// Tổng dung lượng THẬT của mọi bảng băm đang sống (bảng mặc định, bể luồng phụ, mọi phiên đang giữ).
+// Định nghĩa sau SearchSession; dùng để giới hạn tăng trưởng theo RAM thực, không theo bộ đếm tích luỹ.
+uint64_t liveHashBytes();
+
 class HashGrowthPool {
 public:
-    HashGrowthPool(uint64_t allocatedBytes, uint64_t maximumBytes)
-        : allocatedBytes_(allocatedBytes), maximumBytes_(maximumBytes) {}
-
-    uint64_t allocatedBytes() {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return allocatedBytes_;
-    }
+    explicit HashGrowthPool(uint64_t maximumBytes) : maximumBytes_(maximumBytes) {}
 
     uint64_t maximumBytes() const { return maximumBytes_; }
 
     bool grow(TranspositionTable& table) {
         std::lock_guard<std::mutex> lock(mutex_);
-        const uint64_t allocated = allocatedBytes_;
+        const uint64_t allocated = liveHashBytes();
         if (allocated >= maximumBytes_) {
             reportLimitReached();
             return false;
@@ -188,9 +175,8 @@ public:
             sendLine("info string hash growth stopped reason=allocation-failed");
             return false;
         }
-        allocatedBytes_ += static_cast<uint64_t>(growthSlots) * TranspositionTable::ENTRY_BYTES;
         sendLine("info string hash expanded allocatedMiB=" +
-                 std::to_string(allocatedBytes_ / HASH_MIB));
+                 std::to_string(liveHashBytes() / HASH_MIB));
         return true;
     }
 
@@ -203,7 +189,6 @@ private:
     }
 
     std::mutex mutex_;
-    uint64_t allocatedBytes_;
     const uint64_t maximumBytes_;
     bool limitReported_ = false;
 };
@@ -233,13 +218,14 @@ private:
         const auto now = std::chrono::steady_clock::now();
         const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - started_).count();
         const i64 nodes = g_progressNodes.load(std::memory_order_relaxed);
-        const uint64_t allocatedBytes = hashPool_->allocatedBytes();
         const uint64_t maximumBytes = hashPool_->maximumBytes();
         size_t used = state_.tt.used(), capacity = state_.tt.capacitySlots();
         for (const MateSearchState& worker : workers_) {
             used += worker.tt.used();
             capacity += worker.tt.capacitySlots();
         }
+        // RAM đã cấp = dung lượng THẬT của các bảng đang dùng.
+        const uint64_t allocatedBytes = static_cast<uint64_t>(capacity) * TranspositionTable::ENTRY_BYTES;
         const int hashFillTenths = capacity
             ? static_cast<int>(std::min<uint64_t>(1000, static_cast<uint64_t>(used) * 1000 / capacity))
             : 0;
@@ -303,25 +289,35 @@ std::shared_ptr<HashGrowthPool>& defaultMateSearchHashPool() {
 void resetDefaultMateSearchHashPool() {
     defaultMateSearchHashPool().reset();
     defaultMateSearchState().tt.resizeSlots(TranspositionTable::INITIAL_SLOTS);
-    for (MateSearchState& worker : defaultMateSearchWorkers())
+    defaultMateSearchState().hashConfigured = false;
+    for (MateSearchState& worker : defaultMateSearchWorkers()) {
         worker.tt.resizeSlots(TranspositionTable::INITIAL_SLOTS);
+        worker.hashConfigured = false;
+    }
 }
 
 void configureSearchHashTables(MateSearchState& state, std::vector<MateSearchState>& workers,
                                std::shared_ptr<HashGrowthPool>& pool) {
-    if (!pool) {
-        const uint64_t maximumBytes = maximumHashBytes();
-        const uint64_t initialBytes = std::min(HASH_GIB, maximumBytes);
-        const size_t threadCount = workers.size() + 1;
-        const size_t slotsPerThread = std::max<size_t>(
-            1, static_cast<size_t>(initialBytes / TranspositionTable::ENTRY_BYTES / threadCount));
-        state.tt.resizeSlots(slotsPerThread);
-        for (MateSearchState& worker : workers) worker.tt.resizeSlots(slotsPerThread);
-        const uint64_t allocatedBytes = static_cast<uint64_t>(slotsPerThread) *
-            TranspositionTable::ENTRY_BYTES * threadCount;
-        pool = std::make_shared<HashGrowthPool>(allocatedBytes, maximumBytes);
+    const uint64_t maximumBytes = maximumHashBytes();
+    if (!pool) pool = std::make_shared<HashGrowthPool>(maximumBytes);
+    // Mỗi bảng chưa được cấp (phiên mới, luồng phụ mới) nhận phần của mình trong 1 GiB ban đầu.
+    // Bảng đã cấp hoặc đã tăng trưởng được giữ nguyên để phiên tiếp tục ấm.
+    const uint64_t initialBytes = std::min(HASH_GIB, maximumBytes);
+    const size_t threadCount = workers.size() + 1;
+    const size_t slotsPerThread = std::max<size_t>(
+        1, static_cast<size_t>(initialBytes / TranspositionTable::ENTRY_BYTES / threadCount));
+    bool created = false;
+    auto configure = [&](MateSearchState& s) {
+        if (s.hashConfigured) return;
+        s.tt.resizeSlots(slotsPerThread);
+        s.hashConfigured = true;
+        created = true;
+    };
+    configure(state);
+    for (MateSearchState& worker : workers) configure(worker);
+    if (created) {
         sendLine("info string hash allocated allocatedMiB=" +
-                 std::to_string(allocatedBytes / HASH_MIB) +
+                 std::to_string(liveHashBytes() / HASH_MIB) +
                  " initialTargetMiB=1024 threads=" + std::to_string(threadCount) +
                  " growthChunkMiB=1024 thresholdPercent=90 maxMiB=" +
                  std::to_string(maximumBytes / HASH_MIB));
@@ -357,6 +353,16 @@ struct SearchSession {
 
 std::unordered_map<std::string, std::unique_ptr<SearchSession>> g_searchSessions;
 
+uint64_t liveHashBytes() {
+    uint64_t total = defaultMateSearchState().tt.capacityBytes();
+    for (const MateSearchState& worker : defaultMateSearchWorkers()) total += worker.tt.capacityBytes();
+    for (const auto& entry : g_searchSessions) {
+        total += entry.second->state.tt.capacityBytes();
+        for (const MateSearchState& worker : entry.second->workers) total += worker.tt.capacityBytes();
+    }
+    return total;
+}
+
 // Bể luồng phụ cho YBWC (xem searchMateRootParallel) — PHẢI sống NGOÀI một lượt gọi
 // searchMateRootParallel (ở SearchSession hoặc scope hàm runGoBudget*) và chỉ bị tt.clear() CÙNG
 // LÚC với st.tt.clear(), giống hệt cách st (luồng chính) đã được đối xử từ trước. Đo thật cho thấy
@@ -377,7 +383,7 @@ void ensureWorkerPool(std::vector<MateSearchState>& workers, const MateSearchSta
 }
 
 void clearWorkerPool(std::vector<MateSearchState>& workers) {
-    for (auto& w : workers) { w.tt.clear(); w.mateWitness.clear(); }
+    for (auto& w : workers) w.reset();
 }
 
 // Tổng nút ĐÃ QUÉT thật (luồng chính + mọi luồng phụ ấm) — dùng để báo cáo "info ... nodes N", THAY
@@ -387,6 +393,14 @@ i64 totalNodes(const MateSearchState& st, const std::vector<MateSearchState>& wo
     i64 n = st.nodeCounter;
     for (const auto& w : workers) n += w.nodeCounter;
     return n;
+}
+
+// Lượt tìm KHÔNG thuộc phiên (lệnh "go ...") phải đếm nút từ 0. Nếu không, bộ đếm của bảng mặc định cộng
+// dồn qua mọi lượt trước và cùng một thế cờ báo 9 nghìn nút lúc này, 1,3 triệu nút lúc khác.
+void resetNodeCounters(MateSearchState& st, std::vector<MateSearchState>& workers) {
+    st.nodeCounter = 0;
+    st.progressReportedNodes = 0;
+    for (auto& w : workers) { w.nodeCounter = 0; w.progressReportedNodes = 0; }
 }
 
 size_t totalHashUsed(const MateSearchState& st, const std::vector<MateSearchState>& workers) {
@@ -669,9 +683,9 @@ void runGoBudget(int maxBudget, long long movetimeMs, int fromBudget, SearchSess
     bool foundMate = false;
 
     if (!session) {
-        st.tt.clear();
-        st.mateWitness.clear();
+        st.reset();  // xoá cả bảng lịch sử/killer: cùng thế cờ phải cho cùng kết quả mỗi lượt
         clearWorkerPool(workers);
+        resetNodeCounters(st, workers);
     }
 
     for (int budget = std::max(1, fromBudget); budget <= maxBudget; ++budget) {
@@ -755,7 +769,7 @@ void runGoBudget(int maxBudget, long long movetimeMs, int fromBudget, SearchSess
 // (đã thấy thật: depth=6 trên khai cuộc chuẩn mất >15s một luồng). maxDepth là TRẦN trên (khớp
 // AI_POSITIONAL_MAX_DEPTH=12), movetimeMs là hạn giờ thật sự quyết định dừng ở đâu.
 // Lịch sử lặp thế lấy từ g_history — dựng ở handlePosition theo chuỗi "moves" mà app gửi kèm. Nhờ
-// vậy pha thế trận phạt được đường lặp thế/chiếu mãi đúng như bản JS lúc đang chơi thật, chứ không
+// vậy pha thế trận phạt được đường lặp thế/chiếu mãi đúng như bản gốc lúc đang chơi thật, chứ không
 // còn ngỡ mọi thế cờ đều mới xuất hiện lần đầu (app chỉ gửi FEN trơn thì g_history chỉ có thế gốc,
 // mọi phạt lặp bằng 0 — vẫn chạy đúng, chỉ là không biết gì về lịch sử).
 // Probe một cặp ngân sách R/B đã còn lại sau một nước của line. Khác với
@@ -776,6 +790,7 @@ void runGoBudgetPair(int redBudget, int blackBudget, long long movetimeMs, Searc
     if (!session) {
         st.reset();
         clearWorkerPool(workers);
+        resetNodeCounters(st, workers);
     }
     auto t0 = std::chrono::steady_clock::now();
     auto deadline = (movetimeMs > 0)
@@ -1258,23 +1273,6 @@ void initializeEngine() {
     initialized = true;
 }
 
-#ifdef __EMSCRIPTEN__
-extern "C" EMSCRIPTEN_KEEPALIVE void bruteforce_command(const char* command) {
-    if (!command || !*command) return;
-    initializeEngine();
-    try { executeCommandLine(command); }
-    catch (const std::exception& error) {
-        sendLine(std::string("info string ERROR: ") + error.what());
-        sendLine("bestmove (none)");
-    }
-}
-
-int main() {
-    // Browser calls bruteforce_command(). Keep the runtime alive between commands.
-    initializeEngine();
-    return 0;
-}
-#else
 int main() {
     initializeEngine();
     std::string line;
@@ -1288,4 +1286,3 @@ int main() {
     stopSearch();
     return 0;
 }
-#endif

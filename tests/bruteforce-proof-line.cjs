@@ -9,7 +9,7 @@ for (const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) {
     if (n.type === 'FunctionDeclaration' && n.id.name === 'finishAnalysis') finishSource = m[1].slice(n.start, n.end);
     if (n.type === 'FunctionDeclaration' && n.id.name === 'refreshDefenseGuideMoveBruteForce') defenseSource = m[1].slice(n.start, n.end);
     if (n.type === 'FunctionDeclaration' && n.id.name === 'startGuideSession') startGuideSource = m[1].slice(n.start, n.end);
-    if (n.type === 'FunctionDeclaration' && n.id.name === 'offerWinningGuide') offerGuideSource = m[1].slice(n.start, n.end);
+    if (n.type === 'FunctionDeclaration' && ['offerWinningGuide', 'renderWinningGuideOffer', 'startGuideFromOffer'].includes(n.id.name)) offerGuideSource = (offerGuideSource || '') + m[1].slice(n.start, n.end);
     if (n.type === 'FunctionDeclaration' && n.id.name === 'findBruteForceHoldingMove') holdingSource = m[1].slice(n.start, n.end);
     if (n.type === 'FunctionDeclaration' && n.id.name === 'prefetchBranchBruteForce') prefetchSource = m[1].slice(n.start, n.end);
   }
@@ -36,16 +36,17 @@ assert.equal(offerGuideSource.includes('initialBfLinePending'), false,
   'the winning-guide choices must not wait for the background proof line');
 assert.equal(offerGuideSource.includes('Đang hoàn thiện line chứng minh'), false,
   'proof-line progress belongs only in the line viewer');
-assert.match(offerGuideSource, /showGuideBuildOptions\('win'/,
+assert.match(offerGuideSource, /startGuideFromOffer.*'win'/s,
   'the attack-side choice must be available immediately after a win');
-assert.match(offerGuideSource, /showGuideBuildOptions\('defense'/,
+assert.match(offerGuideSource, /startGuideFromOffer.*'defense'/s,
   'the defense-side choice must be available immediately after a win');
+assert.ok(startGuideSource.includes('worstLineToken++'), 'vào hướng dẫn phải dừng hẳn việc dựng line chứng minh');
 assert.equal(startGuideSource.includes("lineViewProofState === 'pending'"), false,
   'starting a BF guide must not be blocked by a pending proof line');
 assert.equal(refineSource.includes('offerWinningGuide('), false,
   'finishing the BF proof line must not rebuild an unselected guide offer');
-assert.match(refineSource, /useWeb/,
-  'the single proof-line refiner must serve both Native and Web');
+assert.ok(refineSource.includes('refineWorstCaseLineBruteForce('),
+  'the single proof-line refiner must drive the Brute-force refinement');
 assert.equal(defenseSource.includes('buildLineView('), false,
   'Finding one BF holding move must not reconstruct the preview line');
 assert.match(prefetchSource, /findBruteForceHoldingMove\(/,

@@ -8,7 +8,7 @@ namespace BruteForce {
 struct HashPair { i32 h1, h2; };
 
 // Khớp seedZobrist() (:1499-1508): PRNG xorshift32 hạt giống cố định 0x9E3779B9, dùng int32 có dấu.
-// Không bắt buộc phải khớp giá trị TUYỆT ĐỐI với bản JS (TT chỉ là cache tốc độ, không đổi kết
+// Không bắt buộc phải khớp giá trị TUYỆT ĐỐI với bản gốc (TT chỉ là cache tốc độ, không đổi kết
 // quả cuối) nhưng tự seed cố định để mỗi lần chạy đều tái lập được, đúng tinh thần bản gốc.
 void initZobrist();
 

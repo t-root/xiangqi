@@ -1,6 +1,6 @@
 # Kiểm thử dự án
 
-Toàn bộ test và tài liệu kiểm thử nằm trong **`tests/`**. Đọc **`tests/README.md`** trước khi sửa hoặc kiểm tra engine, phối hợp Native/Web, cache hay cầu nối.
+Toàn bộ test và tài liệu kiểm thử nằm trong **`tests/`**. Đọc **`tests/README.md`** trước khi sửa hoặc kiểm tra engine, phối hợp Native, cache hay cầu nối.
 
 - Lệnh kiểm tra chính từ thư mục gốc: `node tests/run.cjs`.
 - Hoặc chạy `npm test` trong `engine/`.

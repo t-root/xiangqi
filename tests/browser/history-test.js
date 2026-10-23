@@ -3,22 +3,15 @@ window.addEventListener('DOMContentLoaded', async () => {
  report.style='position:fixed;inset:0 0 auto 0;z-index:999999;background:white;color:black;padding:12px;white-space:pre-wrap;max-height:50vh;overflow:auto';
  document.body.append(report);
  const log=[],commands=[];const check=(ok,message)=>{if(!ok)throw Error(message);log.push(message);report.textContent='RUNNING\n'+log.join('\n');};
- const mode=new URLSearchParams(location.search).get('mode')||'nativecombo';
- const web=mode==='webcombo',parts=compositeBrains(mode);
+ const mode='combo',parts=compositeBrains(mode);
  const wrapped=new WeakSet();
  const wrap=ws=>{if(!wrapped.has(ws)){wrapped.add(ws);const send=ws.send.bind(ws);ws.send=cmd=>{if(cmd.startsWith('position '))commands.push(cmd);return send(cmd);};}return ws;};
  try {
   report.textContent='RUNNING '+mode;
   getAnalysisTimeLimitMs=()=>500;
-  if(web) {
-   await pikafishWebLoad();await loadBruteForceWeb();
-   const send=pikafishWebSend;pikafishWebSend=cmd=>{if(cmd.startsWith('position '))commands.push(cmd);return send(cmd);};
-   const prep=prepareBruteForceWebQuery;prepareBruteForceWebQuery=async(...args)=>wrap(await prep(...args));
-  } else {
-   const pika=preparePikafishQuery,bf=prepareBruteForceQuery;
-   preparePikafishQuery=async(...args)=>wrap(await pika(...args));
-   prepareBruteForceQuery=async(...args)=>wrap(await bf(...args));
-  }
+  const pika=preparePikafishQuery,bf=prepareBruteForceQuery;
+  preparePikafishQuery=async(...args)=>wrap(await pika(...args));
+  prepareBruteForceQuery=async(...args)=>wrap(await bf(...args));
   board=parseXiangqiFen('3k4r/9/9/9/9/9/9/p8/9/R3K4 w - - 0 1').board;
   currentPlayer='red';gameMode=true;gameFirstPlayer='red';gameUsesAnalysisRule=false;applyGameCheckStreakRule();
   gameOver=false;guideActive=false;gameUndoStack=[];gameRedoStack=[];gameHistory=[];

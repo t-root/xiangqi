@@ -16,16 +16,15 @@ const server=http.createServer((req,res)=>{
  const url=new URL(req.url,'http://127.0.0.1'),isTest=url.pathname==='/__combo-test';
  const target=isTest?path.join(root,'xiangqi-analyzer.html'):path.resolve(root,'.'+decodeURIComponent(url.pathname));
  if(!target.startsWith(root+path.sep)){res.writeHead(403);return res.end();}
- res.setHeader('Cross-Origin-Opener-Policy','same-origin');res.setHeader('Cross-Origin-Embedder-Policy','require-corp');
  res.setHeader('Cache-Control','no-store');
  res.setHeader('Content-Type',target.endsWith('.wasm')?'application/wasm':target.endsWith('.js')?'text/javascript':target.endsWith('.html')?'text/html; charset=utf-8':'application/octet-stream');
  fs.readFile(target,(err,data)=>{if(err){res.writeHead(404);return res.end('Not found');}
   if(isTest)data=data.toString('utf8')
-   .replaceAll('ws://localhost:8899','ws://127.0.0.1:19989').replaceAll('ws://localhost:8900','ws://127.0.0.1:19990')
+   .replaceAll(':8899`',':19989`').replaceAll(':8900`',':19990`')
    .replace('</body>', url.searchParams.has('plain') ? '</body>' : '<script src="/tests/browser/' + (url.searchParams.has('initial-lines') ? 'analysis-engine-lines.js' : url.searchParams.has('history') ? 'history-test.js' : url.searchParams.has('cache') ? 'cache-repro.js' : 'composite-browser-test.js') + '"></script></body>');
   res.end(data);
  });
 });
-server.listen(19998,'127.0.0.1',()=>console.log('Composite test: http://127.0.0.1:19998/__combo-test?mode=nativecombo (or webcombo)'));
+server.listen(19998,'127.0.0.1',()=>console.log('Composite test: http://127.0.0.1:19998/__combo-test '));
 function cleanup(){closed=true;for(const t of timers)clearTimeout(t);for(const s of sockets){for(const c of s.clients)c.terminate();s.close();}for(const c of children)c.kill();server.close();}
 process.on('SIGINT',cleanup);process.on('SIGTERM',cleanup);setTimeout(cleanup,600000).unref();

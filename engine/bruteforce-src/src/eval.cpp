@@ -1,6 +1,6 @@
 // Cổng chính xác buildPieceSquareTables/pieceSquareBonus/evaluatePosition/evaluateForColor
 // (xiangqi-analyzer.html:1693-1758). Mọi hằng số giữ nguyên — đây là hàm quyết định điểm số nên
-// đổi dù 1 đơn vị cũng làm sai kết quả so sánh với bản JS.
+// đổi dù 1 đơn vị cũng làm sai kết quả so sánh với bản gốc.
 
 #include "eval.h"
 #include <array>
@@ -40,7 +40,7 @@ void initEvalTables() {
         }
     }
 
-    // Sĩ/Tượng/Tướng — khớp :1719-1727 (toạ độ [row,col] y hệt bản JS).
+    // Sĩ/Tượng/Tướng — khớp :1719-1727 (toạ độ [row,col] y hệt bản gốc).
     for (auto& rc : {std::pair{9, 3}, {9, 5}, {7, 3}, {7, 5}}) g_advisor[rc.first][rc.second] = 12;
     g_advisor[8][4] = 22;
     for (auto& rc : {std::pair{9, 2}, {9, 6}, {7, 0}, {7, 8}, {5, 2}, {5, 6}}) g_elephant[rc.first][rc.second] = 12;

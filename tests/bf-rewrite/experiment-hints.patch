@@ -1,0 +1,145 @@
+diff --git a/engine/bruteforce-src/src/main.cpp b/engine/bruteforce-src/src/main.cpp
+index 540547f..ca64b11 100644
+--- a/engine/bruteforce-src/src/main.cpp
++++ b/engine/bruteforce-src/src/main.cpp
+@@ -119,6 +119,10 @@ uint64_t maximumHashBytes() {
+ // 0 = chưa có quân nào giữ chuỗi.
+ CsCode g_csRootRed = 0, g_csRootBlack = 0;
+ bool g_ktcBudgetOn = false;
++// Option SearchHints: bật bảng gợi ý nước không khóa ngân sách (xem HintTable trong search.h). Chỉ đổi
++// thứ tự nước nên kết quả không đổi; mặc định tắt cho tới khi đối chiếu xong.
++int g_useHints = 0;
++constexpr size_t HINT_TABLE_SLOTS = size_t(1) << 22;  // 4M ô x 8 byte = 32 MiB
+ 
+ // Một mốc lịch sử lặp thế — khớp repetitionEntry của app (:1890-1896): gaveCheck chỉ có nghĩa khi
+ // đã có bên vừa đi, thế cờ xuất phát thì luôn false.
+@@ -648,6 +652,8 @@ void runGoBudget(int maxBudget, long long movetimeMs, int fromBudget, SearchSess
+     st.checkStreakBonusRuleOn = g_checkStreakBonusRuleOn;
+     st.ktcBudgetOn = g_ktcBudgetOn;
+     st.cancelled = &g_cancelled;
++    st.useHints = g_useHints;
++    if (g_useHints) st.hints.enable(HINT_TABLE_SLOTS);
+     std::vector<MateSearchState>& workers = session ? session->workers : defaultMateSearchWorkers();
+     ensureWorkerPool(workers, st);
+     configureSearchHashTables(st, workers, defaultMateSearchHashPool());
+@@ -671,6 +677,7 @@ void runGoBudget(int maxBudget, long long movetimeMs, int fromBudget, SearchSess
+     if (!session) {
+         st.tt.clear();
+         st.mateWitness.clear();
++        st.hints.clear();
+         clearWorkerPool(workers);
+     }
+ 
+@@ -1044,6 +1051,9 @@ void handleSetOption(std::istringstream& iss) {
+         g_csRootBlack = parseCheckStreakRootOption(value);
+     } else if (name == "KtcBudget") {
+         g_ktcBudgetOn = (value == "true" || value == "1" || value == "on");
++    } else if (name == "SearchHints") {
++        try { g_useHints = (value == "true" || value == "on") ? 3 : std::clamp(std::stoi(value), 0, 7); }
++        catch (...) { g_useHints = 0; }
+     }
+ }
+ 
+diff --git a/engine/bruteforce-src/src/search.cpp b/engine/bruteforce-src/src/search.cpp
+index 1bb64f2..c8afda5 100644
+--- a/engine/bruteforce-src/src/search.cpp
++++ b/engine/bruteforce-src/src/search.cpp
+@@ -149,6 +149,19 @@ SearchResult negamaxForcedMateGen(Board& b, Color color, int redBudget, int blac
+         if (hit.flag == TTFlag::Lower && hit.score >= beta) return {hit.score, {}};
+         if (hit.flag == TTFlag::Upper && hit.score <= alpha) return {hit.score, {}};
+     }
++    // TT không có nước (thường gặp ngay khi sang mức budget mới vì khóa TT chứa ngân sách): thử bảng
++    // gợi ý không khóa ngân sách. Chỉ đổi thứ tự nước, không đổi kết quả.
++    // THỬ NGHIỆM (bit 4): một thế đã chứng minh có/ bị mate chính xác ở mức ngân sách nhỏ hơn đúng 1
++    // trên mỗi bên (cùng đường đi ở mức trước) thì ở mức này vẫn đúng y như vậy: thắng/thua đã chứng
++    // minh không dựa vào việc ai đó hết ngân sách nên thêm ngân sách không đổi được kết quả.
++    if ((st.useHints & 4) && redBudget > 0 && blackBudget > 0) {
++        TranspositionTable::Entry prev;
++        if (st.tt.lookup(kh1, kh2, redBudget - 1, blackBudget - 1, isRed, pliesFromRoot, prev) &&
++            prev.flag == TTFlag::Exact && (prev.score > MATE_THRESHOLD || prev.score < -MATE_THRESHOLD))
++            return {prev.score, {}};
++    }
++    const int hintBit = (st.ktcExemptColor == color) ? 2 : 1;  // nút của bên công / bên thủ
++    if (ttCode == 0 && (st.useHints & hintBit)) ttCode = st.hints.lookup(kh1, kh2, st.ktcExemptColor == Color::Red);
+ 
+     st.ensureMoveBuf(pliesFromRoot);
+     std::vector<ScoredMove>& moves = st.scoredMoveBuf[static_cast<size_t>(pliesFromRoot)];
+@@ -272,6 +285,9 @@ SearchResult negamaxForcedMateGen(Board& b, Color color, int redBudget, int blac
+     TTFlag flag = best <= alphaAtEntry ? TTFlag::Upper : (best >= betaAtEntry ? TTFlag::Lower : TTFlag::Exact);
+     rememberMateWitness(st, h1, h2, redBudget, blackBudget, color, csRed, csBlack, bestCode, best);
+     st.tt.store(kh1, kh2, redBudget, blackBudget, isRed, best, flag, bestCode, pliesFromRoot);
++    // Chỉ nhớ nước đã GÂY CẮT (nước thoát của bên thủ / nước thắng của bên công). Nút không cắt
++    // (mọi nước đều thua / không thắng) chỉ có "nước điểm cao nhất" tùy ý, đặt lên đầu là nhiễu.
++    if ((st.useHints & hintBit) && bestCode && best >= betaAtEntry) st.hints.store(kh1, kh2, st.ktcExemptColor == Color::Red, bestCode);
+     const size_t capacity = st.tt.capacitySlots();
+     if (st.growHashTable && st.nodeCounter >= st.nextHashGrowthCheck && capacity &&
+         st.tt.used() >= capacity * 9 / 10) {
+diff --git a/engine/bruteforce-src/src/search.h b/engine/bruteforce-src/src/search.h
+index eb313f0..10f1219 100644
+--- a/engine/bruteforce-src/src/search.h
++++ b/engine/bruteforce-src/src/search.h
+@@ -50,6 +50,47 @@ struct ScoredMove : Move {
+     i64 ord = 0;
+ };
+ 
++// Bảng gợi ý nước KHÔNG khóa theo số nước còn lại. TT chính khóa theo (thế cờ, ngân sách Đỏ/Đen) nên
++// sang mức budget mới nó không trúng và nước tốt nhất của mức trước bị mất; bảng này chỉ nhớ "nước
++// tốt nhất lần gần nhất ở thế này" bất kể ngân sách, để mức sau thử nước đó đầu tiên. CHỈ ảnh hưởng
++// thứ tự nước (như killer/history), không bao giờ cắt nhánh nên không đổi kết quả tìm kiếm.
++// Khóa gồm cả bên đang là "bên công" của lượt dò (thắng / bị thắng), vì hai lượt dò đó cần hai nước
++// khác nhau cho cùng một thế cờ.
++class HintTable {
++public:
++    void enable(size_t slotsPow2) {
++        if (slots_.size() == slotsPow2) return;
++        slots_.assign(slotsPow2, 0);
++        mask_ = slotsPow2 - 1;
++    }
++    bool enabled() const { return !slots_.empty(); }
++    void clear() { std::fill(slots_.begin(), slots_.end(), 0ULL); }
++    // Trả mã nước + 1 (cùng quy ước bestCode), 0 nếu chưa có.
++    i32 lookup(i32 kh1, i32 kh2, bool attackerRed) const {
++        if (slots_.empty()) return 0;
++        const u64 slot = slots_[index(kh1, attackerRed)];
++        if (static_cast<u32>(slot >> 32) != verify(kh2, attackerRed)) return 0;
++        return static_cast<i32>(slot & 0xFFFFu);
++    }
++    void store(i32 kh1, i32 kh2, bool attackerRed, i32 code) {
++        if (slots_.empty() || code <= 0 || code > 0xFFFF) return;
++        slots_[index(kh1, attackerRed)] = (static_cast<u64>(verify(kh2, attackerRed)) << 32) | static_cast<u64>(code);
++    }
++private:
++    using u64 = uint64_t;
++    size_t index(i32 kh1, bool attackerRed) const {
++        u32 v = static_cast<u32>(kh1) ^ (attackerRed ? 0x9E3779B1u : 0x85EBCA77u);
++        v ^= v >> 15; v *= 0x2545F491u; v ^= v >> 13;
++        return static_cast<size_t>(v) & mask_;
++    }
++    static u32 verify(i32 kh2, bool attackerRed) {
++        u32 v = static_cast<u32>(kh2) ^ (attackerRed ? 0xC2B2AE3Du : 0x27D4EB2Fu);
++        return v == 0 ? 1u : v;  // 0 dành cho ô trống
++    }
++    std::vector<u64> slots_;
++    size_t mask_ = 0;
++};
++
+ // Trạng thái RIÊNG của một luồng tìm kiếm — khớp việc mỗi Worker JS có TT/mateHistoryScores/
+ // mateKillerA/B ĐỘC LẬP (xem báo cáo khảo sát §8, §6). Không dùng biến toàn cục kiểu JS để mỗi
+ // std::thread native có bản sao riêng, không cần khoá (mutex) trong đường nóng của tìm kiếm.
+@@ -76,6 +117,8 @@ struct MateSearchState {
+     // PositionalSearchState (positional.h) trước đây, giờ áp nốt cho nhánh quét cạn thắng ép.
+     std::optional<std::chrono::steady_clock::time_point> deadline;
+     std::unordered_map<MateWitnessKey, i32, MateWitnessKeyHash> mateWitness;
++    HintTable hints;          // chỉ dùng khi useHints (option SearchHints) — xem HintTable
++    int useHints = 0;         // bit 1 = dùng ở nút bên thủ, bit 2 = dùng ở nút bên công
+     std::function<bool(TranspositionTable&)> growHashTable;
+     i64 nextHashGrowthCheck = 0;
+ 
+@@ -129,6 +172,7 @@ struct MateSearchState {
+         std::fill(mateKillerA.begin(), mateKillerA.end(), 0);
+         std::fill(mateKillerB.begin(), mateKillerB.end(), 0);
+         mateWitness.clear();
++        hints.clear();
+     }
+ };
+ 

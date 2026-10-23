@@ -200,7 +200,7 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
           return std::nullopt;
       }));
 
-    // House rules ported from the app's own "Engine Web" (see position.h/.cpp
+    // House rules specific to this app (see position.h/.cpp
     // CheckStreak namespace, Position::rule_judge). Off by default ("none") so stock UCI
     // clients that don't know about this see stock Pikafish behaviour, at stock speed.
     // "both" restricts BOTH sides — the app's "Duyệt & Điều Khiển" rule (limit 3: a 4th

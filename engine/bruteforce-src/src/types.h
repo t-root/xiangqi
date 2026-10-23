@@ -1,5 +1,5 @@
-// Brute-force — cổng C++ native của "Engine Web" trong xiangqi-analyzer.html.
-// Mọi hằng số/quy tắc ở đây PHẢI khớp bit-by-bit với bản JS (xem
+// Brute-force — engine C++ native của xiangqi-analyzer.html.
+// Mọi hằng số/quy tắc ở đây PHẢI khớp bit-by-bit với bản gốc (xem
 // ../xiangqi-analyzer.html, vùng #ENGINE-START/#ENGINE-END)
 // — đây là yêu cầu cứng của dự án, không được đổi kết quả để đổi lấy tốc độ.
 
@@ -103,7 +103,7 @@ inline int pieceValue(PieceType t) {
 constexpr int MATE_SCORE = 100000;          // :761
 constexpr int MATE_THRESHOLD = 50000;       // :762
 
-// "Vô cực an toàn" — bản JS dùng -Infinity/Infinity (số thực, âm hoá không tràn). C++ dùng int32
+// "Vô cực an toàn" — bản gốc dùng -Infinity/Infinity (số thực, âm hoá không tràn). C++ dùng int32
 // nên KHÔNG được dùng numeric_limits<i32>::min() làm biên: -INT_MIN tràn số (undefined behavior)
 // ngay khi bị âm hoá ở nút cha (kiểu -alpha khi truyền beta cho lượt gọi con). INF đủ lớn hơn mọi
 // điểm số thật (tối đa ±MATE_SCORE) nhưng âm hoá vẫn nằm gọn trong phạm vi int32.
@@ -133,7 +133,7 @@ constexpr int CHECK_STREAK_GAME_LIMIT = 3;
 // "cản rồi bị ăn" chưa). Quân giữ chuỗi là quân ĐANG THẬT SỰ chiếu Tướng đối phương, nên chiếu đôi
 // thì có nhiều quân cùng giữ chuỗi. Gói vào một số nguyên: mỗi quân là một chữ số hệ CS_DIGIT_BASE,
 // digit = (ô * CS_COUNT_BASE + số_lần) * 2 + bonus (digit 0 = slot trống), các chữ số xếp theo ô
-// TĂNG DẦN nên cùng một tập ra cùng một số — khớp bit-by-bit bản JS (xem csDecodeDigit ở đó).
+// TĂNG DẦN nên cùng một tập ra cùng một số — khớp bit-by-bit bản gốc (xem csDecodeDigit ở đó).
 constexpr int CS_SLOTS = 4;
 constexpr int CS_COUNT_BASE = 8;
 // = NUM_SQUARES*CS_COUNT_BASE*2 (720*2=1440) làm tròn lên; digit thật tối đa 1439 < 2048.
@@ -141,7 +141,7 @@ constexpr int CS_DIGIT_BASE = 2048;
 constexpr int CS_ENTRY_CODES = NUM_SQUARES * CS_COUNT_BASE * 2;  // 1440
 
 // Trạng thái đã gói. 4 chữ số × 10 bit = 40 bit nên phải là 64-bit (app dùng số thực nguyên chính
-// xác, cùng dãy giá trị). CÓ DẤU để dùng được -1 làm dấu hiệu "phạm luật", y như bản JS.
+// xác, cùng dãy giá trị). CÓ DẤU để dùng được -1 làm dấu hiệu "phạm luật", y như bản gốc.
 using CsCode = int64_t;
 
 constexpr int TT_BITS = 20;                        // :1563

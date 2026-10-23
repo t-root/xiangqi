@@ -16,13 +16,13 @@ function load(context, names) {
   for (const name of names) vm.runInContext(functions.get(name), context);
   return context;
 }
-const labels = {nativecombo:'Phối hợp Native',webcombo:'Phối hợp Web',pikafish:'Pikafish',bruteforce:'Brute-force',pikafishweb:'Pikafish Web',bruteforceweb:'Brute-force Web'};
+const labels = {combo:'Phối hợp',pikafish:'Pikafish',bruteforce:'Brute-force'};
 const deferred=()=>{let resolve,reject;const promise=new Promise((r,j)=>{resolve=r;reject=j;});return {promise,resolve,reject};};
 const tick=()=>new Promise(r=>setImmediate(r));
 let checks=0;
 async function test(name,fn){await fn();checks++;console.log('PASS '+name);}
 (async()=>{
- for (const combo of ['nativecombo', 'webcombo']) {
+ for (const combo of ['combo']) {
   await test(combo+': cache queues advance independently, retry alone and cancel without dispatching more',async()=>{
    const calls=[], pending=new Map(); let alive=true;
    const jobs=[1,2,3].map(index=>({index,state:{board:[],side:'red'},budgets:{},engineJobs:{}}));
@@ -53,7 +53,7 @@ async function test(name,fn){await fn();checks++;console.log('PASS '+name);}
    assert(!calls.includes(`${slow}:2`));
   });
  }
- await test('live router uses the composite path in all five guide modes, native and web',()=>{
+ await test('live router uses the composite path in all five guide modes',()=>{
   const calls=[];
   const c=load({guideActive:true,document:{getElementById:()=>({})},guideToken:0,guideSide:'black',currentPlayer:'black',
    gameOver:false,guideAttacker:'red',guideMovesTarget:6,guideMaxMoves:6,board:[],BRAIN_IDS:Object.keys(labels),
@@ -61,10 +61,10 @@ async function test(name,fn){await fn();checks++;console.log('PASS '+name);}
    guideMovesRemaining:()=>6,recallAnalysisSeedMove:()=>null,currentCompletedGuideAnswer:()=>null,
    stopBackgroundCacheForLive(){},pendingGuideEngineJob:()=>null,
    refreshPlayGuideMoveComposite:brain=>calls.push(brain)},['refreshGuide']);
-  for(const brain of ['nativecombo','webcombo'])for(const mode of ['win','defense','hold','drawproof','play']){
+  for(const brain of ['combo'])for(const mode of ['win','defense','hold','drawproof','play']){
    c.guideEngine=brain;c.guideMode=mode;c.refreshGuide();assert.equal(calls.at(-1),brain);
   }
-  assert.equal(calls.length,10);
+  assert.equal(calls.length,5);
  });
  await test('live cache miss cancels background work and starts the selected engine immediately',()=>{
   const calls=[];
@@ -112,7 +112,7 @@ async function test(name,fn){await fn();checks++;console.log('PASS '+name);}
   const answer={moveStr:'a0a1',info:{depth:3,scoreType:'mate',scoreVal:2}};
   const askForMoreTime=async info=>{events.push(`prompt:${info.depth}`);return 2500;};
   const shouldStop=()=>false;
-  const c=load({Date,analysisCancelled:false,PIKAFISH_WEB_HASH_MB:1024,
+  const c=load({Date,analysisCancelled:false,PIKAFISH_HASH_MB:1024,
    buildAnalysisEnginePositionState:()=>({}),buildEnginePositionState:()=>({
     positionCommand:'position fen snapshot',rootCheckStreak:{}
    }),getAnalysisEngineThreadCount:()=>1,boardToXiangqiFen:()=> 'fen',
@@ -125,7 +125,7 @@ async function test(name,fn){await fn();checks++;console.log('PASS '+name);}
     events.push(`extend:${extension}`);
     return answer;
    }},['probeBruteForceAnalysis']);
-  const result=await c.probeBruteForceAnalysis(false,[], 'red',true,7,1200,
+  const result=await c.probeBruteForceAnalysis([], 'red',true,7,1200,
    info=>events.push(`info:${info.depth}`),askForMoreTime,shouldStop);
   assert.equal(result.moveStr,'a0a1');
   assert.deepEqual(events,['slice:7:1200','info:2','prompt:2','extend:2500','info:3']);
@@ -160,10 +160,10 @@ async function test(name,fn){await fn();checks++;console.log('PASS '+name);}
   assert.equal(c.renderCompositeAnalysisProgress(resultEl),true);
   assert.equal(resultEl.innerHTML,'extension prompt');
  });
- for(const combo of ['nativecombo','webcombo']) {
+ for(const combo of ['combo']) {
   await test(combo+': both start before either finishes; early result keeps peer running',async()=>{
    const pending={},calls=[],progress={},offers=[];
-   const c=load({guideToken:10,guideActive:true,BRAIN_LABELS:labels,PIKAFISH_WEB_HASH_MB:1024,guideMovesStatusText:()=>'',
+   const c=load({guideToken:10,guideActive:true,BRAIN_LABELS:labels,PIKAFISH_HASH_MB:1024,guideMovesStatusText:()=>'',
     guideCurrentCacheBudgets:()=>({red:6,black:6}),buildCurrentEnginePositionState:b=>({board:[],budgets:b}),
     getAnalysisTimeLimitMs:()=>1200,withCompositeEngineDeadline:(_,p)=>p,
     querySingleEngineGuideMove:(brain,fen,color,time,budget,onInfo,boardBefore,allowHoldingMove,positionState,isCurrent,remainingBudgets,hashReserveMiB)=>{
@@ -182,7 +182,7 @@ async function test(name,fn){await fn();checks++;console.log('PASS '+name);}
   });
   await test(combo+': failure stays visible while peer completes; stale results are ignored',async()=>{
    const pending={},progress={},offers=[];
-   const c=load({guideToken:1,guideActive:true,PIKAFISH_WEB_HASH_MB:1024,guideCurrentCacheBudgets:()=>({}),buildCurrentEnginePositionState:()=>({}),
+   const c=load({guideToken:1,guideActive:true,PIKAFISH_HASH_MB:1024,guideCurrentCacheBudgets:()=>({}),buildCurrentEnginePositionState:()=>({}),
     getAnalysisTimeLimitMs:()=>10,withCompositeEngineDeadline:(_,p)=>p,
     querySingleEngineGuideMove:brain=>{pending[brain]=deferred();return pending[brain].promise;}},['compositeBrains','queryCompositeGuideCandidates']);
    const parts=c.compositeBrains(combo);
@@ -192,11 +192,11 @@ async function test(name,fn){await fn();checks++;console.log('PASS '+name);}
   });
  }
  await test('BF live adapters use no movetime and preserve asymmetric draw budgets',async()=>{
-  for(const brain of ['bruteforce','bruteforceweb']) {
+  for(const brain of ['bruteforce']) {
    const commands=[];let holdingBudget;
    const socket={send:s=>commands.push(s)};
    const c=load({buildEnginePositionState:()=>({positionCommand:'position fen snapshot',rootCheckStreak:{}}),
-    prepareBruteForceWebQuery:async()=>socket,prepareBruteForceQuery:async()=>socket,guideToken:1,
+    prepareBruteForceQuery:async()=>socket,guideToken:1,
     bruteForceRemainingBudgetCommand:b=>`go budgets red ${b.red} black ${b.black}`,
     runBruteForceGo:async(_,cmd)=>{commands.push(cmd);return {info:{outcomeHint:'draw'}};},
     findBruteForceHoldingMove:async(_,__,___,b)=>{holdingBudget=b;return {};},cloneBoard:b=>b,moveToUci:()=> 'a0a1'

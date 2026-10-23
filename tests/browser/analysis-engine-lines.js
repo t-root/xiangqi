@@ -1,16 +1,15 @@
 window.addEventListener('DOMContentLoaded', async () => {
  const report=document.createElement('pre');report.id='initial-lines-test-result';
  report.style='position:fixed;bottom:0;left:0;right:0;z-index:999999;background:white;color:black;padding:6px;white-space:pre-wrap;font-size:12px;max-height:45px;overflow:auto';document.body.prepend(report);
- const mode=new URLSearchParams(location.search).get('mode')==='webcombo'?'webcombo':'nativecombo';
+ const mode='combo';
  report.textContent='RUNNING '+mode+' original lines';
  try {
-  if(mode==='webcombo') await Promise.all([pikafishWebLoad(),loadBruteForceWeb()]);
   board=parseXiangqiFen('9/5k3/9/9/5C3/9/9/4K4/2c6/C8 w - - 0 1').board;
   currentPlayer='red';gameMode=false;guideActive=false;
   document.getElementById('engineBrainSelect').value=mode;
   document.getElementById('firstPlayer').value='red';
   document.getElementById('modeMoves').checked=false;document.getElementById('modeTime').checked=true;
-  document.getElementById('movesLimit').value=4;getAnalysisTimeLimitMs=()=>mode==='webcombo'?10000:1500;
+  document.getElementById('movesLimit').value=4;getAnalysisTimeLimitMs=()=>6000;
   // Isolate foreground guidance from intentionally unrelated background branch work.
   scheduleGuideNextPlyPrefetch=()=>{};
   await startAnalysisComposite(mode);

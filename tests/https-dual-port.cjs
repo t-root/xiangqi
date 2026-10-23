@@ -66,7 +66,6 @@ async function run() {
     for (const [name, mod, port] of [['http', http, HTTP], ['https', https, HTTP]]) {
         const { res, body } = await get(mod, port);
         if (res.statusCode !== 200 || !body.includes(Buffer.from('<html'))) throw new Error(`${name}: trang chính không trả về đúng`);
-        if (res.headers['cross-origin-opener-policy'] !== 'same-origin') throw new Error(`${name}: thiếu header COOP`);
     }
     const cert = new crypto.X509Certificate(fs.readFileSync(path.join(certDir, 'cert.pem')));
     if (!cert.checkIP('127.0.0.1') || !cert.checkHost('localhost')) throw new Error('chứng chỉ thiếu SAN localhost/127.0.0.1');

@@ -1,12 +1,12 @@
 const assert = require('node:assert/strict');
 const {context, fixture, move} = require('./history-regression.cjs');
-for (const combo of ['nativecombo', 'webcombo']) {
+for (const combo of ['combo']) {
   const c = context();
   fixture(c);
   for (const row of c.board) for (const piece of row) if(piece) piece.type=piece.color+piece.type[0].toUpperCase()+piece.type.slice(1);
   c.resetRepetitionWindow();
   const root = c.buildCurrentEnginePositionState();
-  const brains = combo === 'nativecombo' ? ['pikafish','bruteforce'] : ['pikafishweb','bruteforceweb'];
+  const brains = ['pikafish','bruteforce'];
   Object.assign(c, {lastAnalysisPositionState:root,lastAnalysisSnapshot:root.board,lastAnalysisFirstPlayer:'red',
     lastAnalysisEngineLines:{},lastAnalysisGuideSeed:null,guideActive:true,guideMode:'win',guideSide:'red',
     guideAttacker:'red',guideEngine:combo,guideMovesTarget:4,guideMaxMoves:4,guideMovesUsed:0,

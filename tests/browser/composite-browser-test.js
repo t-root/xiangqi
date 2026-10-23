@@ -2,12 +2,11 @@ window.addEventListener('DOMContentLoaded',async()=>{
  const report=document.createElement('pre');report.id='composite-test-result';
  report.style='position:fixed;inset:0 0 auto 0;z-index:999999;background:white;color:black;padding:12px;white-space:pre-wrap;font-size:16px;max-height:45vh;overflow:auto';
  document.body.append(report);
- const mode=new URLSearchParams(location.search).get('mode')==='webcombo'?'webcombo':'nativecombo';
+ const mode='combo';
  const states={};let completed=false;
  const render=()=>report.textContent=(completed?'PASS ':'RUNNING ')+mode+' — actual live guide route\n'+Object.entries(states).map(([b,i])=>`${b}: depth ${i.depth||0}, ${i.engineStatus}`).join('\n');
  render();
  try{
-  if(mode==='webcombo')await Promise.all([pikafishWebLoad(),loadBruteForceWeb()]);
   const parsed=parseXiangqiFen('9/5k3/9/9/5C3/9/9/4K4/2c6/C8 w - - 0 1');
   board=parsed.board;currentPlayer='red';guideSide='red';guideAttacker='red';guideEngine=mode;
   guideActive=true;guideMode='win';guideMovesTarget=4;guideMaxMoves=4;guideMovesUsed=0;guideOfferLocked=false;gameOver=false;

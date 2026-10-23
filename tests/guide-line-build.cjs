@@ -14,4 +14,4 @@ assert.ok(!html.includes('guidePikaCacheActive'), 'Pika cache must not coordinat
 // Trước đây còn hàm currentGuideLineEngine() { return ''; } để chặn mọi engine dự đoán tuyến sống;
 // hàm đó đã được xoá hẳn cùng tính năng, nên chỉ cần bảo đảm không có lại.
 assert.ok(!names.has('currentGuideLineEngine'), 'No engine may opt into live line prediction');
-console.log('PASS Pika line prediction removed; Native/Web use the same live-guide model as BF');
+console.log('PASS Pika line prediction removed; Pika uses the same live-guide model as BF');

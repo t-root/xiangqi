@@ -2,10 +2,13 @@ const fs = require('node:fs'), path = require('node:path'), vm = require('node:v
 const assert = require('node:assert/strict');
 const parser = require('../engine/node_modules/@babel/parser');
 const html = fs.readFileSync(path.join(__dirname, '../xiangqi-analyzer.html'), 'utf8');
-const functions = new Map();
+const functions = new Map(), declarations = [];
+// Biến luật dùng chung mà các hàm đọc trực tiếp; các biến trạng thái khác do test tự gán vào context.
+const SHARED_LETS = new Set(['checkStreakLimit', 'checkStreakRestrictedColor', 'checkStreakBonusRuleOn', 'analysisRootStreak', 'ktcBudgetOn', 'ktcExemptColor']);
 for (const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) {
   for (const node of parser.parse(match[1]).program.body) {
     if (node.type === 'FunctionDeclaration') functions.set(node.id.name, match[1].slice(node.start, node.end));
+    else if (node.type === 'VariableDeclaration' && (node.kind === 'const' || node.declarations.every(d => SHARED_LETS.has(d.id.name)))) declarations.push({ src: match[1].slice(node.start, node.end), names: node.declarations.map(d => d.id.name).filter(Boolean) });
   }
 }
 function context() {
@@ -19,8 +22,9 @@ function context() {
     XIANGQI_FEN_LETTER:{chariot:'r',horse:'n',elephant:'b',advisor:'a',king:'k',cannon:'c',soldier:'p'},
     ENGINE_BUILD_SIGNATURES:{},
   });
-  for(const match of html.matchAll(/\/\*#ENGINE-START\*\/([\s\S]*?)\/\*#ENGINE-END\*\//g)) vm.runInContext(match[1],c);
   for(const source of functions.values()) vm.runInContext(source,c);
+  // Nạp các hằng/biến cấp cao không đụng DOM; khai báo nào cần DOM sẽ ném lỗi và bị bỏ qua.
+  for(const {src,names} of declarations){if(names.some(n=>n in c))continue;try{vm.runInContext(src,c);}catch(_){/* cần DOM */}}
   vm.runInContext('checkStreakRestrictedColor = "both";',c);
   return c;
 }
@@ -86,17 +90,15 @@ if(require.main===module)(async()=>{
   const pika=c.buildEnginePositionState(s,true),bf=c.buildEnginePositionState(s,false);
   assert.equal(pika.rootCheckStreak.red,0);assert.equal(pika.currentCheckStreak.red,1);assert.equal(bf.rootCheckStreak.red,1);
  });
-for(const web of [false,true])await asyncTest(`Pikafish ${web?'Web':'Native'} move query sends full history before go`,async()=>{
+ await asyncTest('Pikafish move query sends full history before go',async()=>{
   const c=context();let s=fixture(c);for(const m of [a,b,capture])s=c.buildHypotheticalStateAfterMove(s,m);
   c.board=s.board;c.currentPlayer=s.side;c.installEngineHistory(s);
   const commands=[],ws={send:x=>commands.push(x),addEventListener(){},removeEventListener(){}};
   Object.assign(c,{getGameplayEngineThreadCount:()=>2,
-   preparePikafishQuery:async()=>ws,preparePikafishWebQuery:async()=>{},pikafishAttachHandler(){},pikafishDetachHandler(){},
-   pikafishWebSend:x=>commands.push(x),
-   pikafishWebRunGoLegal:(m,budget)=>{commands.push('go movetime '+budget);return new Promise(()=>{});}});
+   preparePikafishQuery:async()=>ws,pikafishAttachHandler(){},pikafishDetachHandler(){}});
   const fen=c.boardToXiangqiFen(s.board,s.side);
   // Truy vấn chờ nước trả về nên không bao giờ xong trong bài này; chỉ cần xem lệnh đã gửi.
-  if(web)c.queryPikafishWebMove(fen,s.side,10,null,s);else c.queryPikafishNativeMove(fen,10,null,s);
+  c.queryPikafishMove(fen,10,null,s);
   await new Promise(r=>setTimeout(r,50));
   assert.match(commands[0],/ moves a0a1 i9i8 a1a2$/);assert.match(commands[1],/^go /);
  });

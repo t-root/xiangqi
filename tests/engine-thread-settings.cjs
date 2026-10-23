@@ -34,10 +34,10 @@ for (const name of analysisFunctions) {
 }
 
 const gameplayFunctions = [
-    'aiPlayTurnPikafish', 'playAiMoveForMePikafish', 'tryBruteForceBeforeEngineWeb',
+    'aiPlayTurnPikafish', 'playAiMoveForMePikafish',
     'refreshMateGuideMovePikafish', 'refreshDrawProofGuideMovePikafish',
     'refreshWinGuideMovePikafish', 'refreshDefenseGuideMoveBruteForce',
-    'refreshPlayGuideMovePikafish', 'queryPikafishNativeMove', 'querySingleEngineMove',
+    'refreshPlayGuideMovePikafish', 'queryPikafishMove', 'querySingleEngineMove',
     'querySingleEngineGuideMove', 'aiPlayTurnBruteForce', 'playAiMoveForMeBruteForce',
     'refreshWinGuideMoveBruteForce', 'refreshPlayGuideMoveBruteForce'
 ];
@@ -47,9 +47,6 @@ for (const name of gameplayFunctions) {
         `${name} must configure gameplay engines to two threads`);
 }
 
-assert.match(functions.get('preparePikafishWebQuery'),
-    /threads = getGameplayEngineThreadCount\(\)/,
-    'Pikafish Web gameplay callers default to two threads');
 assert.doesNotMatch(html, /getEngineThreadCount|configureEngineThreads|engineThreadSetup|assistThreadSetup/,
     'the obsolete user-configurable thread control must be removed');
 

@@ -1,0 +1,738 @@
+diff --git a/engine/bruteforce-src/src/main.cpp b/engine/bruteforce-src/src/main.cpp
+index 540547f..4d516cb 100644
+--- a/engine/bruteforce-src/src/main.cpp
++++ b/engine/bruteforce-src/src/main.cpp
+@@ -119,6 +119,10 @@ uint64_t maximumHashBytes() {
+ // 0 = chưa có quân nào giữ chuỗi.
+ CsCode g_csRootRed = 0, g_csRootBlack = 0;
+ bool g_ktcBudgetOn = false;
++// Option RetainedTree: dò mate bằng cây giữ lại (xem RetainedMateSearch trong search.h) thay vì quét lại
++// từ gốc ở mỗi mức. RetainedTreeMiB chặn dung lượng cây; nút nào hết chỗ thì dò bằng cách cũ.
++bool g_retainedTree = true;
++size_t g_retainedMiB = 1024;
+ 
+ // Một mốc lịch sử lặp thế — khớp repetitionEntry của app (:1890-1896): gaveCheck chỉ có nghĩa khi
+ // đã có bên vừa đi, thế cờ xuất phát thì luôn false.
+@@ -353,6 +357,8 @@ struct SearchSession {
+     int completedBudget = 0;
+     long long accumulatedMs = 0;
+     int sliceCount = 0;
++    // Cây giữ lại (option RetainedTree): sống cùng phiên nên các lát gia hạn đi tiếp trên đúng cây cũ.
++    std::unique_ptr<RetainedMateSearch> retained;
+ };
+ 
+ std::unordered_map<std::string, std::unique_ptr<SearchSession>> g_searchSessions;
+@@ -668,6 +674,20 @@ void runGoBudget(int maxBudget, long long movetimeMs, int fromBudget, SearchSess
+     std::vector<Move> lastHoldLine;
+     bool foundMate = false;
+ 
++    // Cây giữ lại: theo phiên khi có phiên (lát gia hạn đi tiếp trên cây cũ), ngược lại sống trong lượt "go".
++    std::unique_ptr<RetainedMateSearch> localRetained;
++    RetainedMateSearch* retained = nullptr;
++    if (g_retainedTree) {
++        const size_t capBytes = g_retainedMiB * HASH_MIB;
++        if (session) {
++            if (!session->retained) session->retained.reset(new RetainedMateSearch(capBytes));
++            retained = session->retained.get();
++        } else {
++            localRetained.reset(new RetainedMateSearch(capBytes));
++            retained = localRetained.get();
++        }
++    }
++
+     if (!session) {
+         st.tt.clear();
+         st.mateWitness.clear();
+@@ -686,8 +706,10 @@ void runGoBudget(int maxBudget, long long movetimeMs, int fromBudget, SearchSess
+             session->activeBudget = budget;
+         }
+         Board scratch = board;
+-        ProbeResult res = probeForcedMate(scratch, color, budget, budget,
+-            g_csRootRed, g_csRootBlack, st, workers, g_threads);
++        ProbeResult res = retained
++            ? retained->probe(scratch, color, budget, g_csRootRed, g_csRootBlack, st)
++            : probeForcedMate(scratch, color, budget, budget,
++                g_csRootRed, g_csRootBlack, st, workers, g_threads);
+         // Bị huỷ HOẶC hết giờ GIỮA mức budget này: res có thể bị cắt dở ở bất kỳ nhánh nào, không
+         // còn là kết quả "đã quét cạn xong, chắc chắn" — Brute-force CAM KẾT chỉ báo cáo mức đã quét
+         // TRỌN VẸN. Dừng ngay, giữ nguyên doneBudget/kết quả của mức TRƯỚC (nếu có) — khớp đúng
+@@ -1044,6 +1066,10 @@ void handleSetOption(std::istringstream& iss) {
+         g_csRootBlack = parseCheckStreakRootOption(value);
+     } else if (name == "KtcBudget") {
+         g_ktcBudgetOn = (value == "true" || value == "1" || value == "on");
++    } else if (name == "RetainedTree") {
++        g_retainedTree = (value == "true" || value == "1" || value == "on");
++    } else if (name == "RetainedTreeMiB") {
++        try { g_retainedMiB = static_cast<size_t>(std::clamp(std::stoi(value), 16, 32768)); } catch (...) {}
+     }
+ }
+ 
+diff --git a/engine/bruteforce-src/src/search.cpp b/engine/bruteforce-src/src/search.cpp
+index 1bb64f2..6b2a0d6 100644
+--- a/engine/bruteforce-src/src/search.cpp
++++ b/engine/bruteforce-src/src/search.cpp
+@@ -6,6 +6,8 @@
+ #include "search.h"
+ #include "eval.h"
+ #include <algorithm>
++#include <cstdlib>
++#include <cstdio>
+ #include <limits>
+ 
+ namespace BruteForce {
+@@ -472,4 +474,615 @@ ProbeResult probeForcedMateAlphaBetaGen(Board& b, Color color, int redBudget, in
+     return {false, loss.score, loss.line};
+ }
+ 
++// ============================================================================================
++// CÂY GIỮ LẠI (RetainedMateSearch)
++//
++// Bài toán mỗi lượt dò là AND-OR thuần: "bên công (attacker) có ép thắng trong ngân sách không?".
++//   * nút của bên công (OR): thắng nếu CÓ một nước dẫn tới thắng;
++//   * nút của bên thủ (AND): bên công thắng nếu MỌI nước của bên thủ đều dẫn tới thắng;
++//   * lá = nút mà bên đi đã hết ngân sách: tính như "bên công không thắng" (kể cả khi bên đi đang
++//     bị chiếu bí — giống hệt negamaxForcedMateGen, kiểm tra ngân sách TRƯỚC kiểm tra hết nước);
++//   * bên đi hết nước / thiếu Tướng / đi nước phạm luật chiếu liên tục: bên đi thua ngay.
++// Giá trị của một nút chỉ phụ thuộc (thế cờ, bên đi, chuỗi chiếu, số nước đã tiêu u/v) và mức
++// `level`, và đơn điệu theo mức: thắng ở mức L thì thắng ở mọi mức cao hơn; không thắng ở mức L thì
++// không thắng ở mọi mức thấp hơn. Nên mỗi nút chỉ cần nhớ hai số: noWin (mức cao nhất đã biết là
++// KHÔNG thắng) và win (mức thấp nhất đã biết là THẮNG). Mức sau đi lại cây, nút nào đã biết thì
++// trả ngay, nút chưa biết thì tính tiếp (lá mức trước thành nút trong mức này).
++// Hai lượt dò của probeForcedMate (thắng / bị ép thua) là hai bên công khác nhau nên có hai cây riêng.
++// ============================================================================================
++namespace {
++
++constexpr uint32_t RET_BROKE = 0xFFFFFFFFu;   // nước phạm luật chiếu liên tục: bên đi thua ngay
++constexpr uint8_t RET_UNKNOWN_WIN = 255;
++enum : uint8_t { RN_EXPANDED = 1, RN_RED_TO_MOVE = 2, RN_NO_KING = 4 };
++constexpr uint16_t RK_KTC_SKIP = 0x8000;   // trong RetKid::code: nước ktc (chạy Tướng khi bị chiếu, không trừ ngân sách)
++constexpr uint16_t RK_CODE_MASK = 0x1FFF;  // moveCode < 8100 < 8192
++
++struct RetNode {
++    i32 h1, h2;
++    CsCode csRed, csBlack;
++    uint8_t usedRed, usedBlack;   // số nước ĐÃ TIÊU của mỗi bên trên đường tới nút (nước ktc không trừ)
++    uint8_t noWin, win;
++    uint8_t flags;
++    uint16_t kidCount;
++    uint32_t kidOffset;
++};
++
++// Một nước hợp lệ của nút. Kết luận "bên công có thắng sau nước này không" được chép luôn vào đây
++// (noWin/win) để duyệt danh sách nước không phải chạm tới nút con ở vùng nhớ khác; kết luận chỉ lớn dần
++// (đơn điệu) nên bản chép cũ vẫn đúng, chỉ có thể thiếu thông tin mới.
++struct RetKid {
++    uint32_t child;     // 0 = chưa dựng nút con; RET_BROKE = nước phạm luật; còn lại = chỉ số nút (>= 1)
++    uint16_t code;      // moveCode(from, to) | RK_KTC_SKIP
++    uint8_t noWin;      // mức cao nhất đã biết "bên công KHÔNG thắng sau nước này"
++    uint8_t win;        // mức thấp nhất đã biết "bên công THẮNG sau nước này" (255 = chưa biết)
++};
++
++inline Move retDecodeMove(uint16_t code) {
++    const int c = code & RK_CODE_MASK;
++    const int from = c / ZOBRIST_SQUARES, to = c % ZOBRIST_SQUARES;
++    return Move{Square{from / BOARD_WIDTH, from % BOARD_WIDTH}, Square{to / BOARD_WIDTH, to % BOARD_WIDTH}};
++}
++
++struct RetChildParams {
++    i32 h1 = 0, h2 = 0;
++    CsCode csRed = 0, csBlack = 0;
++    uint8_t usedRed = 0, usedBlack = 0;
++    bool broke = false;
++};
++
++class RetTree {
++public:
++    RetTree(Color attacker, size_t capBytes) : attacker_(attacker), capBytes_(capBytes) {
++        table_.assign(size_t(1) << 12, 0u);
++        nodes_.push_back(RetNode{});   // chỉ số 0 để trống: RetKid::child == 0 nghĩa là "chưa dựng nút con"
++    }
++
++    size_t bytes() const {
++        return nodes_.size() * sizeof(RetNode) + kids_.size() * sizeof(RetKid) + table_.size() * sizeof(uint32_t);
++    }
++    bool aborted() const { return aborted_; }
++    size_t nodeCount() const { return nodes_.size(); }
++    size_t kidCount() const { return kids_.size(); }
++    void clearAbort() { aborted_ = false; }
++    void setKtc(bool on) { ktcOn_ = on; }
++    // Cây của bên công kia: một thế mà bên công này đã chứng minh THẮNG thì bên kia KHÔNG BAO GIỜ thắng
++    // được ở thế đó (hai chiến lược ép thắng loại trừ nhau), ở mọi mức. Chỉ dùng khi không có ktc vì ktc
++    // làm số nước đã tiêu phụ thuộc vào bên công.
++    void setPeer(RetTree* peer) { peer_ = peer; }
++    // Chỉ số nút khớp thế/trạng thái của `n` (cùng khóa), 0 nếu chưa có.
++    uint32_t lookupLike(const RetNode& n) const {
++        RetChildParams p;
++        p.h1 = n.h1; p.h2 = n.h2; p.csRed = n.csRed; p.csBlack = n.csBlack; p.usedRed = n.usedRed; p.usedBlack = n.usedBlack;
++        const uint32_t found = findNode(p, keyHash(p.h1, p.h2, p.csRed, p.csBlack, p.usedRed, p.usedBlack));
++        return found ? found - 1 : 0;
++    }
++    bool provedWin(uint32_t idx) const { return nodes_[idx].win != RET_UNKNOWN_WIN; }
++    const RetNode& nodeAt(uint32_t idx) const { return nodes_[idx]; }
++
++    void initRoot(const Board& b, Color mover, CsCode csRed, CsCode csBlack) {
++        const HashPair hp = hashBoardPair(b);
++        RetChildParams rp;
++        rp.h1 = hp.h1; rp.h2 = hp.h2; rp.csRed = csRed; rp.csBlack = csBlack;
++        rootMoverRed_ = (mover == Color::Red);
++        rootIdx_ = create(rp, mover == Color::Red);
++    }
++
++    bool solveRoot(Board& b, int level, MateSearchState& st) {
++        aborted_ = false;
++        return solve(rootIdx_, level, b, 0, st);
++    }
++
++    // Dựng đường (PV) khi gốc đã biết THẮNG ở `level`. Bên công chọn nước thắng ở `level`; bên thủ chọn
++    // nước cầm cự lâu nhất = nước mà con của nó KHÔNG thắng ở level-1. Bàn cờ được trả về nguyên trạng.
++    std::vector<Move> buildLine(Board& b, int level, MateSearchState& st) {
++        std::vector<Move> line;
++        struct Applied { Move move; Piece captured; Color mover; };
++        std::vector<Applied> applied;
++        uint32_t idx = rootIdx_;
++        int ply = 0;
++        while (!aborted_) {
++            const RetNode self = nodes_[idx];
++            const Color mover = (self.flags & RN_RED_TO_MOVE) ? Color::Red : Color::Black;
++            if (!(self.flags & RN_EXPANDED)) {
++                // Nút này được kết luận bằng cách cũ (hết chỗ giữ cây): dựng nốt phần đuôi đường bằng cách cũ.
++                RetChildParams np;
++                np.h1 = self.h1; np.h2 = self.h2; np.csRed = self.csRed; np.csBlack = self.csBlack;
++                np.usedRed = self.usedRed; np.usedBlack = self.usedBlack;
++                const std::vector<Move> tail = legacyLine(mover, np, level, ply, b, st);
++                line.insert(line.end(), tail.begin(), tail.end());
++                break;
++            }
++            if ((self.flags & RN_NO_KING) || self.kidCount == 0) break;
++            const bool isOr = (mover == attacker_);
++            Square oppKing{-1, -1};
++            const bool haveOppKing = csRestricted(st.restrictedSide, mover) && findKing(b, otherColor(mover), oppKing);
++            int chosen = -1;
++            if (isOr) {
++                for (uint16_t i = 0; i < self.kidCount && chosen < 0 && !aborted_; ++i)
++                    if (evalKid(idx, self, mover, self.kidOffset + i, level, b, ply, haveOppKing, oppKing, st)) chosen = i;
++            } else {
++                // Pha 1: nước mà con đã biết không thắng ở level-1 (không tốn công dò).
++                for (uint16_t i = 0; i < self.kidCount && chosen < 0; ++i) {
++                    const RetKid& k = kids_[self.kidOffset + i];
++                    if (k.child == RET_BROKE) continue;
++                    if (level - 1 <= k.noWin) chosen = i;
++                }
++                // Pha 2: dò từng nước ở level-1 cho tới khi gặp nước không thắng.
++                for (uint16_t i = 0; i < self.kidCount && chosen < 0 && !aborted_; ++i)
++                    if (!evalKid(idx, self, mover, self.kidOffset + i, level - 1, b, ply, haveOppKing, oppKing, st)) chosen = i;
++                if (chosen < 0 && !aborted_) chosen = 0;   // không nên xảy ra; giữ đường dự phòng
++            }
++            if (chosen < 0 || aborted_) break;
++            const RetKid kid = kids_[self.kidOffset + chosen];
++            const Move mv = retDecodeMove(kid.code);
++            line.push_back(mv);
++            if (kid.child == RET_BROKE) break;
++            const Piece captured = makeMoveInPlace(b, mv);
++            st.pieceSquares.apply(mv, mover, captured);
++            applied.push_back({mv, captured, mover});
++            if (kid.child == 0) {
++                // Nút con chưa được dựng (hết chỗ, hoặc là lá ở mức khác): dựng nốt đuôi đường bằng cách cũ.
++                const RetChildParams cp = childParams(self, mover, kid, mv, b, captured, haveOppKing, oppKing, st);
++                if (!cp.broke) {
++                    const std::vector<Move> tail = legacyLine(otherColor(mover), cp, level, ply + 1, b, st);
++                    line.insert(line.end(), tail.begin(), tail.end());
++                }
++                break;
++            }
++            idx = kid.child;
++            ++ply;
++        }
++        for (size_t i = applied.size(); i-- > 0;) {
++            undoMoveInPlace(b, applied[i].move, applied[i].captured);
++            st.pieceSquares.undo(applied[i].move, applied[i].mover, applied[i].captured);
++        }
++        return line;
++    }
++
++    // Nước thoát ở gốc (bên đi của gốc là bên thủ, gốc KHÔNG thua ở `level`): nước đầu tiên mà con của
++    // nó không thắng. Dùng làm nước giữ thế khi không có mate.
++    bool holdMove(Board& b, int level, MateSearchState& st, Move& out) {
++        const RetNode self = nodes_[rootIdx_];
++        if (!(self.flags & RN_EXPANDED) || (self.flags & RN_NO_KING) || self.kidCount == 0) return false;
++        const Color mover = (self.flags & RN_RED_TO_MOVE) ? Color::Red : Color::Black;
++        Square oppKing{-1, -1};
++        const bool haveOppKing = csRestricted(st.restrictedSide, mover) && findKing(b, otherColor(mover), oppKing);
++        for (uint16_t i = 0; i < self.kidCount && !aborted_; ++i) {
++            if (!evalKid(rootIdx_, self, mover, self.kidOffset + i, level, b, 0, haveOppKing, oppKing, st)) {
++                out = retDecodeMove(kids_[self.kidOffset + i].code);
++                return true;
++            }
++        }
++        return false;
++    }
++
++private:
++    int baseBudget(Color c, int level) const {
++        return (ktcOn_ && c != attacker_) ? level + KTC_DEFENDER_SLACK : level;
++    }
++    bool full() const { return bytes() > capBytes_; }
++
++    bool record(uint32_t idx, int level, bool win) {
++        RetNode& n = nodes_[idx];
++        if (win) { if (level < n.win) n.win = static_cast<uint8_t>(level); }
++        else if (level > n.noWin) n.noWin = static_cast<uint8_t>(level);
++        return win;
++    }
++
++    static uint64_t keyHash(i32 h1, i32 h2, CsCode a, CsCode b, uint8_t u, uint8_t v) {
++        uint64_t h = static_cast<uint32_t>(h1);
++        h = (h * 0x9E3779B185EBCA87ULL) ^ static_cast<uint32_t>(h2);
++        h = (h * 0xC2B2AE3D27D4EB4FULL) ^ static_cast<uint64_t>(a);
++        h = (h * 0x165667B19E3779F9ULL) ^ static_cast<uint64_t>(b);
++        h ^= (static_cast<uint64_t>(u) << 8 | v) * 0x9E3779B97F4A7C15ULL;
++        h ^= h >> 29; h *= 0xBF58476D1CE4E5B9ULL; h ^= h >> 32;
++        return h;
++    }
++
++    uint32_t findNode(const RetChildParams& p, uint64_t hash) const {
++        const size_t mask = table_.size() - 1;
++        for (size_t i = hash & mask;; i = (i + 1) & mask) {
++            const uint32_t slot = table_[i];
++            if (slot == 0) return 0;
++            const RetNode& n = nodes_[slot - 1];
++            if (n.h1 == p.h1 && n.h2 == p.h2 && n.csRed == p.csRed && n.csBlack == p.csBlack &&
++                n.usedRed == p.usedRed && n.usedBlack == p.usedBlack) return slot;   // slot = chỉ số + 1
++        }
++    }
++
++    void growTable() {
++        std::vector<uint32_t> bigger(table_.size() * 2, 0u);
++        const size_t mask = bigger.size() - 1;
++        for (uint32_t slot : table_) {
++            if (!slot) continue;
++            const RetNode& n = nodes_[slot - 1];
++            size_t i = keyHash(n.h1, n.h2, n.csRed, n.csBlack, n.usedRed, n.usedBlack) & mask;
++            while (bigger[i]) i = (i + 1) & mask;
++            bigger[i] = slot;
++        }
++        table_.swap(bigger);
++    }
++
++    // Trả chỉ số nút (>=0); nút bên đi là Đỏ hay Đen do `redToMove`.
++    uint32_t create(const RetChildParams& p, bool redToMove) {
++        const uint64_t hash = keyHash(p.h1, p.h2, p.csRed, p.csBlack, p.usedRed, p.usedBlack);
++        const uint32_t found = findNode(p, hash);
++        if (found) return found - 1;
++        if ((nodes_.size() + 1) * 2 > table_.size()) growTable();
++        RetNode n{};
++        n.h1 = p.h1; n.h2 = p.h2; n.csRed = p.csRed; n.csBlack = p.csBlack;
++        n.usedRed = p.usedRed; n.usedBlack = p.usedBlack;
++        n.noWin = 0; n.win = RET_UNKNOWN_WIN;
++        n.flags = redToMove ? RN_RED_TO_MOVE : 0;
++        nodes_.push_back(n);
++        const uint32_t idx = static_cast<uint32_t>(nodes_.size() - 1);
++        const size_t mask = table_.size() - 1;
++        size_t i = hash & mask;
++        while (table_[i]) i = (i + 1) & mask;
++        table_[i] = idx + 1;
++        return idx;
++    }
++
++    // Sinh danh sách nước hợp lệ của nút (cùng bộ lọc hợp lệ và cùng thứ tự xếp nước ban đầu với
++    // negamaxForcedMateGen), lưu vào kids_. Chỉ gọi khi bàn b đang đúng là thế của nút.
++    void expand(uint32_t idx, Color mover, Board& b, int ply, MateSearchState& st) {
++        st.ensureMoveBuf(ply);
++        std::vector<ScoredMove>& moves = st.scoredMoveBuf[static_cast<size_t>(ply)];
++        fillPseudoScoredMoves(b, mover, st.rawMoveBuf[static_cast<size_t>(ply)], moves, st.pieceSquares);
++        orderMovesForMate(moves, 0, ply < MATE_MAX_PLY ? ply : MATE_MAX_PLY - 1, st);
++        const uint32_t offset = static_cast<uint32_t>(kids_.size());
++        Square kingSquare;
++        if (!findKing(b, mover, kingSquare)) {
++            RetNode& n = nodes_[idx];
++            n.flags |= RN_EXPANDED | RN_NO_KING;
++            n.kidOffset = offset; n.kidCount = 0;
++            return;
++        }
++        const bool inCheckNow = isKingAttacked(b, mover, kingSquare);
++        const int kr = kingSquare.row, kc = kingSquare.col;
++        for (const ScoredMove& move : moves) {
++            const bool ktcSkip = isKtcBudgetSkip(move, mover, st, inCheckNow);
++            const Piece captured = makeMoveInPlace(b, move);
++            // Cùng điều kiện bảo thủ với negamaxForcedMateGen: chỉ nước CÓ THỂ hở Tướng mới cần dò.
++            const bool mustTest = inCheckNow
++                || move.piece.type == PieceType::King
++                || move.from.row == kr || move.from.col == kc
++                || move.to.row == kr || move.to.col == kc
++                || ((move.from.row - kr == 1 || kr - move.from.row == 1) &&
++                    (move.from.col - kc == 1 || kc - move.from.col == 1));
++            bool legal = true;
++            if (mustTest) {
++                const Square myKing = (move.piece.type == PieceType::King) ? move.to : kingSquare;
++                legal = !isKingAttacked(b, mover, myKing);
++            }
++            undoMoveInPlace(b, move, captured);
++            if (!legal) continue;
++            RetKid kid;
++            kid.child = 0;
++            kid.code = static_cast<uint16_t>(moveCode(move.from, move.to) | (ktcSkip ? RK_KTC_SKIP : 0));
++            kid.noWin = 0;
++            kid.win = RET_UNKNOWN_WIN;
++            kids_.push_back(kid);
++        }
++        RetNode& n = nodes_[idx];
++        n.flags |= RN_EXPANDED;
++        n.kidOffset = offset;
++        n.kidCount = static_cast<uint16_t>(kids_.size() - offset);
++    }
++
++    // Tham số của nút con sau nước `kid` (bàn b đã đi nước đó). broke=true nếu nước phạm luật chiếu.
++    RetChildParams childParams(const RetNode& self, Color mover, const RetKid& kid, const Move& mv,
++                               const Board& b, const Piece& captured, bool haveOppKing, Square oppKing,
++                               MateSearchState& st, bool wantHash = true) const {
++        RetChildParams p;
++        const bool isRed = (mover == Color::Red);
++        const int consume = (kid.code & RK_KTC_SKIP) ? 0 : 1;
++        p.usedRed = static_cast<uint8_t>(self.usedRed + (isRed ? consume : 0));
++        p.usedBlack = static_cast<uint8_t>(self.usedBlack + (isRed ? 0 : consume));
++        p.csRed = self.csRed; p.csBlack = self.csBlack;
++        if (haveOppKing) {
++            const CsCode myStreak = isRed ? self.csRed : self.csBlack;
++            const CsCode ncs = csAdvanceAfterMove(b, myStreak, mv, mover, oppKing, st.restrictedSide,
++                                                  st.checkStreakLimit, st.checkStreakBonusRuleOn, !captured.empty());
++            if (ncs < 0) { p.broke = true; return p; }
++            if (isRed) p.csRed = ncs; else p.csBlack = ncs;
++        }
++        if (!wantHash) return p;
++        const Piece movedPiece = b[mv.to.row][mv.to.col];   // bàn đã đi nước: quân vừa đi đang ở ô đích
++        const int fromSq = squareIndex(mv.from), toSq = squareIndex(mv.to);
++        const HashPair fromZ = pieceZobrist(movedPiece.type, movedPiece.color, fromSq);
++        const HashPair toZ = pieceZobrist(movedPiece.type, movedPiece.color, toSq);
++        p.h1 = self.h1 ^ fromZ.h1 ^ toZ.h1 ^ g_zobristTurn1;
++        p.h2 = self.h2 ^ fromZ.h2 ^ toZ.h2 ^ g_zobristTurn2;
++        if (!captured.empty()) {
++            const HashPair capZ = pieceZobrist(captured.type, captured.color, toSq);
++            p.h1 ^= capZ.h1; p.h2 ^= capZ.h2;
++        }
++        return p;
++    }
++
++    // Đường mate (PV) từ một thế mà cây giữ lại không có dữ liệu: dò thế đó bằng negamaxForcedMateGen rồi
++    // ghép đường từ bảng witness, y như probeForcedMate. Trả rỗng nếu thế đó không thắng (không nên xảy ra).
++    std::vector<Move> legacyLine(Color mover, const RetChildParams& p, int level, int ply, Board& b,
++                                 MateSearchState& st) {
++        const int redRem = baseBudget(Color::Red, level) - p.usedRed;
++        const int blackRem = baseBudget(Color::Black, level) - p.usedBlack;
++        if ((mover == Color::Red ? redRem : blackRem) <= 0) return {};
++        const bool moverIsAttacker = (mover == attacker_);
++        const i32 alpha = moverIsAttacker ? MATE_THRESHOLD : -MATE_SCORE;
++        const i32 beta = moverIsAttacker ? MATE_SCORE : -MATE_THRESHOLD;
++        const SearchResult r = negamaxForcedMateGen(b, mover, redRem, blackRem, ply, alpha, beta,
++                                                    p.h1, p.h2, p.csRed, p.csBlack, st);
++        if (st.isCancelled() || st.timeUp()) { aborted_ = true; return {}; }
++        const bool win = moverIsAttacker ? r.score > MATE_THRESHOLD : r.score < -MATE_THRESHOLD;
++        if (!win) return {};
++        std::vector<Move> witness = rebuildMateWitnessLine(b, mover, redRem, blackRem, p.csRed, p.csBlack, st);
++        return witness.empty() ? r.line : witness;
++    }
++
++    // Dò một thế bằng negamaxForcedMateGen (nhánh không còn chỗ giữ). Cửa sổ khớp vai của bên đi:
++    // bên công tìm mate trong (THRESHOLD, MATE], bên thủ tìm "bị mate" trong [-MATE, -THRESHOLD).
++    bool legacyBool(Color mover, int redRem, int blackRem, int ply, i32 h1, i32 h2, CsCode csRed, CsCode csBlack,
++                    Board& b, MateSearchState& st) {
++        const int myRem = (mover == Color::Red) ? redRem : blackRem;
++        if (myRem <= 0) return false;
++        const bool moverIsAttacker = (mover == attacker_);
++        const i32 alpha = moverIsAttacker ? MATE_THRESHOLD : -MATE_SCORE;
++        const i32 beta = moverIsAttacker ? MATE_SCORE : -MATE_THRESHOLD;
++        const SearchResult r = negamaxForcedMateGen(b, mover, redRem, blackRem, ply, alpha, beta,
++                                                    h1, h2, csRed, csBlack, st);
++        if (st.isCancelled() || st.timeUp()) { aborted_ = true; return false; }
++        return moverIsAttacker ? r.score > MATE_THRESHOLD : r.score < -MATE_THRESHOLD;
++    }
++
++    // Đánh giá nước con kidIdx của nút idx ở mức `level`: bên công có thắng sau nước này không?
++    // Tự đi và hoàn tác nước trên bàn b.
++    bool evalKid(uint32_t idx, const RetNode& self, Color mover, size_t kidIdx, int level, Board& b, int ply,
++                 bool haveOppKing, Square oppKing, MateSearchState& st) {
++        const RetKid kid = kids_[kidIdx];
++        if (kid.child == RET_BROKE) return mover != attacker_;   // bên đi phạm luật → bên đi thua
++        if (level <= kid.noWin) return false;
++        if (level >= kid.win) return true;
++        const Move mv = retDecodeMove(kid.code);
++        const Piece captured = makeMoveInPlace(b, mv);
++        st.pieceSquares.apply(mv, mover, captured);
++        bool cw = false;
++        if (kid.child != 0) {
++            cw = solve(kid.child, level, b, ply + 1, st);
++        } else {
++            // Con sẽ là LÁ ở mức này (bên đi kế đã hết ngân sách): kết luận "bên công không thắng" ngay, không
++            // dựng nút con (lá chiếm phần lớn số nút). Vẫn phải xét phạm luật chiếu vì nó thắng thế lá. Ở mức
++            // sau nút con này mới được dựng khi nó thành nút trong.
++            const bool moverIsRed = (mover == Color::Red);
++            const int consume = (kid.code & RK_KTC_SKIP) ? 0 : 1;
++            const Color childMover = otherColor(mover);
++            const int childUsed = (childMover == Color::Red) ? self.usedRed + (moverIsRed ? consume : 0)
++                                                              : self.usedBlack + (moverIsRed ? 0 : consume);
++            const bool childIsLeaf = baseBudget(childMover, level) - childUsed <= 0;
++            const RetChildParams p = childParams(self, mover, kid, mv, b, captured, haveOppKing, oppKing, st, !childIsLeaf);
++            if (p.broke) {
++                kids_[kidIdx].child = RET_BROKE;
++                cw = (mover != attacker_);
++            } else if (childIsLeaf) {
++                cw = false;
++            } else if (!full()) {
++                const uint32_t child = create(p, mover != Color::Red);
++                kids_[kidIdx].child = child;
++                cw = solve(child, level, b, ply + 1, st);
++            } else {
++                cw = legacyBool(otherColor(mover), baseBudget(Color::Red, level) - p.usedRed,
++                                baseBudget(Color::Black, level) - p.usedBlack, ply + 1, p.h1, p.h2,
++                                p.csRed, p.csBlack, b, st);
++            }
++        }
++        undoMoveInPlace(b, mv, captured);
++        st.pieceSquares.undo(mv, mover, captured);
++        (void)idx;
++        if (aborted_) return false;
++        RetKid& stored = kids_[kidIdx];
++        if (cw) { if (level < stored.win) stored.win = static_cast<uint8_t>(level); }
++        else if (level > stored.noWin) stored.noWin = static_cast<uint8_t>(level);
++        return cw;
++    }
++
++    bool solve(uint32_t idx, int level, Board& b, int ply, MateSearchState& st) {
++        if (level < 1) return false;
++        st.countNode();
++        if (st.shouldStop()) { aborted_ = true; return false; }
++        {
++            const RetNode& n0 = nodes_[idx];
++            if (level <= n0.noWin) return false;
++            if (level >= n0.win) return true;
++        }
++        const RetNode self = nodes_[idx];
++        const Color mover = (self.flags & RN_RED_TO_MOVE) ? Color::Red : Color::Black;
++        const int myRem = baseBudget(mover, level) - (mover == Color::Red ? self.usedRed : self.usedBlack);
++        if (myRem <= 0) return record(idx, level, false);   // lá: hết ngân sách → không thắng
++        if (peer_ && !ktcOn_) {
++            const uint32_t pi = peer_->lookupLike(self);
++            if (pi && peer_->provedWin(pi)) { nodes_[idx].noWin = RET_UNKNOWN_WIN; return false; }
++        }
++
++        if (!(self.flags & RN_EXPANDED)) {
++            if (full()) {
++                // Hết chỗ giữ danh sách nước của nút này: dò nó bằng cách cũ, vẫn nhớ kết luận.
++                const bool w = legacyBool(mover, baseBudget(Color::Red, level) - self.usedRed,
++                                          baseBudget(Color::Black, level) - self.usedBlack, ply,
++                                          self.h1, self.h2, self.csRed, self.csBlack, b, st);
++                if (aborted_) return false;
++                return record(idx, level, w);
++            }
++            expand(idx, mover, b, ply, st);
++        }
++        const RetNode cur = nodes_[idx];
++        if ((cur.flags & RN_NO_KING) || cur.kidCount == 0)   // thiếu Tướng / hết nước: bên đi thua
++            return record(idx, level, mover != attacker_);
++
++        const bool isOr = (mover == attacker_);
++        Square oppKing{-1, -1};
++        const bool haveOppKing = csRestricted(st.restrictedSide, mover) && findKing(b, otherColor(mover), oppKing);
++
++        // Nước con đã có kết luận (nút con đã dựng và đã biết ở mức này) không cần đi nước nữa:
++        //  * quyết định (OR: con thắng; AND: con không thắng) → xong ngay;
++        //  * không quyết định (OR: con không thắng; AND: con thắng) → bỏ qua, không đưa vào thứ tự duyệt.
++        const int plyIndex = ply < MATE_MAX_PLY ? ply : MATE_MAX_PLY - 1;
++        auto noteCutoff = [&](uint16_t i) {
++            const RetKid& k = kids_[cur.kidOffset + i];
++            const Move mv = retDecodeMove(k.code);
++            if (b[mv.to.row][mv.to.col].empty()) {
++                i32& history = st.mateHistoryScores[static_cast<size_t>(historyIndex(mv))];
++                const int rr = baseBudget(Color::Red, level) - self.usedRed;
++                const int br = baseBudget(Color::Black, level) - self.usedBlack;
++                history = static_cast<i32>(std::min<i64>(1'000'000'000LL,
++                    static_cast<i64>(history) + static_cast<i64>(rr + br) * (rr + br)));
++                const i32 code = (k.code & RK_CODE_MASK) + 1;
++                if (st.mateKillerA[static_cast<size_t>(plyIndex)] != code) {
++                    st.mateKillerB[static_cast<size_t>(plyIndex)] = st.mateKillerA[static_cast<size_t>(plyIndex)];
++                    st.mateKillerA[static_cast<size_t>(plyIndex)] = code;
++                }
++            }
++        };
++        struct Ord { i64 score; uint16_t kid; };
++        constexpr int MAX_ORDERED = 256;
++        Ord order[MAX_ORDERED];
++        int count = 0;
++        const int total = cur.kidCount < MAX_ORDERED ? cur.kidCount : MAX_ORDERED;
++        const i32 killA = st.mateKillerA[static_cast<size_t>(plyIndex)], killB = st.mateKillerB[static_cast<size_t>(plyIndex)];
++        for (int i = 0; i < total; ++i) {
++            const RetKid& k = kids_[cur.kidOffset + i];
++            if (k.child == RET_BROKE) continue;   // luôn không quyết định (bên đi thua; bên công: không thắng / bên thủ: thắng)
++            bool childNoWin = level <= k.noWin, childWin = level >= k.win;
++            if (!childNoWin && !childWin && k.child != 0) {
++                // Bản chép trong nước con có thể cũ (nút con được dò tiếp qua một nút cha khác trong lúc
++                // hoán vị nước): thử nút con thật, và nếu nó biết nhiều hơn thì chép lại để lần sau khỏi chạm nút con.
++                const RetNode& cn = nodes_[k.child];
++                childNoWin = level <= cn.noWin;
++                childWin = level >= cn.win;
++                RetKid& kw = kids_[cur.kidOffset + i];
++                if (cn.noWin > kw.noWin) kw.noWin = cn.noWin;
++                if (cn.win < kw.win) kw.win = cn.win;
++            }
++            if (childNoWin || childWin) {
++                if (isOr ? childWin : childNoWin) {
++                    noteCutoff(static_cast<uint16_t>(i));
++                    return record(idx, level, isOr);
++                }
++                continue;   // đã biết nhưng không quyết định
++            }
++            ScoredMove sm;
++            const Move mv = retDecodeMove(k.code);
++            sm.from = mv.from; sm.to = mv.to;
++            sm.piece = b[mv.from.row][mv.from.col];
++            sm.captured = b[mv.to.row][mv.to.col];
++            order[count++] = {mateOrderScore(sm, (k.code & RK_CODE_MASK) + 1, 0, killA, killB, st), static_cast<uint16_t>(i)};
++        }
++        // Thứ tự duyệt được xếp lại ở MỖI lần ghé (ăn quân, killer, history hiện tại) y như
++        // negamaxForcedMateGen xếp lại ở mỗi nút; thứ tự cố định lúc sinh nước làm số nút tăng gấp nhiều lần.
++        std::sort(order, order + count, [](const Ord& a, const Ord& b2) {
++            return a.score != b2.score ? a.score > b2.score : a.kid < b2.kid;
++        });
++
++        for (int oi = 0; oi < count; ++oi) {
++            const uint16_t i = order[oi].kid;
++            const bool cw = evalKid(idx, cur, mover, cur.kidOffset + i, level, b, ply, haveOppKing, oppKing, st);
++            if (aborted_) return false;
++            if (isOr ? cw : !cw) {
++                noteCutoff(i);
++                return record(idx, level, isOr);
++            }
++        }
++        return record(idx, level, !isOr);   // OR: mọi nước không thắng → không thắng; AND: mọi nước thắng → thắng
++    }
++
++    RetTree* peer_ = nullptr;
++    Color attacker_;
++    size_t capBytes_;
++    bool ktcOn_ = false;
++    bool aborted_ = false;
++    bool rootMoverRed_ = true;
++    uint32_t rootIdx_ = 0;
++    std::vector<RetNode> nodes_;
++    std::vector<RetKid> kids_;
++    std::vector<uint32_t> table_;
++};
++
++}  // namespace
++
++struct RetainedMateSearch::Impl {
++    explicit Impl(size_t capBytes) : capBytes(capBytes) {}
++    size_t capBytes;
++    std::unique_ptr<RetTree> trees[2];
++    bool rootSet = false;
++    i32 rootH1 = 0, rootH2 = 0;
++    Color rootColor = Color::Red;
++    CsCode rootCsRed = 0, rootCsBlack = 0;
++    CsSide restricted = CsSide::None;
++    int limit = 0;
++    bool bonus = false, ktc = false;
++
++    void drop() { trees[0].reset(); trees[1].reset(); rootSet = false; }
++};
++
++RetainedMateSearch::RetainedMateSearch(size_t capBytes) : impl_(new Impl(capBytes)) {}
++RetainedMateSearch::~RetainedMateSearch() = default;
++void RetainedMateSearch::reset() { impl_->drop(); }
++size_t RetainedMateSearch::usedBytes() const {
++    size_t n = 0;
++    for (const auto& t : impl_->trees) if (t) n += t->bytes();
++    return n;
++}
++
++ProbeResult RetainedMateSearch::probe(Board& board, Color color, int level, CsCode csRed, CsCode csBlack,
++                                      MateSearchState& st) {
++    Impl& m = *impl_;
++    const HashPair hp = hashBoardPair(board);
++    const bool same = m.rootSet && m.rootH1 == hp.h1 && m.rootH2 == hp.h2 && m.rootColor == color &&
++        m.rootCsRed == csRed && m.rootCsBlack == csBlack && m.restricted == st.restrictedSide &&
++        m.limit == st.checkStreakLimit && m.bonus == st.checkStreakBonusRuleOn && m.ktc == st.ktcBudgetOn;
++    if (!same) {
++        m.drop();
++        m.trees[0].reset(new RetTree(Color::Red, m.capBytes / 2));
++        m.trees[1].reset(new RetTree(Color::Black, m.capBytes / 2));
++        for (auto& t : m.trees) t->initRoot(board, color, csRed, csBlack);
++        m.trees[0]->setPeer(m.trees[1].get());
++        m.trees[1]->setPeer(m.trees[0].get());
++        m.rootSet = true; m.rootH1 = hp.h1; m.rootH2 = hp.h2; m.rootColor = color;
++        m.rootCsRed = csRed; m.rootCsBlack = csBlack; m.restricted = st.restrictedSide;
++        m.limit = st.checkStreakLimit; m.bonus = st.checkStreakBonusRuleOn; m.ktc = st.ktcBudgetOn;
++    }
++    const Color savedExempt = st.ktcExemptColor;
++    auto finish = [&](ProbeResult r) { st.ktcExemptColor = savedExempt; return r; };
++    st.pieceSquares.reset(board);
++
++    // Lượt 1: `color` có thắng ép không (bên công = color).
++    RetTree& winTree = *m.trees[color == Color::Red ? 0 : 1];
++    winTree.setKtc(st.ktcBudgetOn);
++    st.ktcExemptColor = color;
++    const bool win = winTree.solveRoot(board, level, st);
++    if (winTree.aborted()) return finish({false, 0, {}});
++    if (win) {
++        std::vector<Move> line = winTree.buildLine(board, level, st);
++        // Độ dài mate suy ra từ MỨC (k = level), không từ độ dài đường: đường có thể chưa trọn vẹn.
++        return finish({true, MATE_SCORE - (2 * level - 1), std::move(line)});
++    }
++
++    // Lượt 2: `color` có bị ép thua không (bên công = đối phương).
++    const Color opp = otherColor(color);
++    RetTree& lossTree = *m.trees[opp == Color::Red ? 0 : 1];
++    lossTree.setKtc(st.ktcBudgetOn);
++    st.ktcExemptColor = opp;
++    const bool lost = lossTree.solveRoot(board, level, st);
++    if (lossTree.aborted()) return finish({false, 0, {}});
++    if (lost) {
++        std::vector<Move> line = lossTree.buildLine(board, level, st);
++        return finish({true, -(MATE_SCORE - (2 * level - 2)), std::move(line)});
++    }
++    std::vector<Move> hold;
++    Move holdMove;
++    if (lossTree.holdMove(board, level, st, holdMove)) hold.push_back(holdMove);
++    if (lossTree.aborted()) return finish({false, 0, {}});
++    return finish({false, 0, std::move(hold)});
++}
++
+ }  // namespace BruteForce
+diff --git a/engine/bruteforce-src/src/search.h b/engine/bruteforce-src/src/search.h
+index eb313f0..666d0f1 100644
+--- a/engine/bruteforce-src/src/search.h
++++ b/engine/bruteforce-src/src/search.h
+@@ -10,6 +10,7 @@
+ #include <atomic>
+ #include <chrono>
+ #include <functional>
++#include <memory>
+ #include <optional>
+ #include <unordered_map>
+ 
+@@ -181,6 +182,27 @@ inline void ktcSearchBudgets(Color attacker, int redBudget, int blackBudget, boo
+ ProbeResult probeForcedMateAlphaBetaGen(Board& b, Color color, int redBudget, int blackBudget,
+                                           CsCode csRed, CsCode csBlack, MateSearchState& st);
+ 
++// Tìm mate bằng CÂY GIỮ LẠI: mỗi mức budget không quét lại từ gốc mà đi lại cây đã dựng ở mức trước
++// (không sinh nước, không kiểm tra hở Tướng lại) rồi mở rộng các lá. Kết quả từng mức giống hệt
++// probeForcedMate (cùng "có thắng ép / bị ép thua / không" và cùng độ dài mate); chỉ khác thứ tự
++// nước nên đường mate trả về có thể là một đường khác cùng độ dài. Cây bị chặn dung lượng: nút nào
++// không còn chỗ giữ thì được dò bằng negamaxForcedMateGen như cũ (không sai kết quả, chỉ không nhanh hơn).
++// Một đối tượng gắn với MỘT thế cờ gốc + bộ luật; đổi thế/luật thì tự xóa cây.
++class RetainedMateSearch {
++public:
++    explicit RetainedMateSearch(size_t capBytes);
++    ~RetainedMateSearch();
++    RetainedMateSearch(const RetainedMateSearch&) = delete;
++    RetainedMateSearch& operator=(const RetainedMateSearch&) = delete;
++    void reset();
++    // level = ngân sách mỗi bên (như redBudget == blackBudget của probeForcedMate).
++    ProbeResult probe(Board& board, Color color, int level, CsCode csRed, CsCode csBlack, MateSearchState& st);
++    size_t usedBytes() const;
++private:
++    struct Impl;
++    std::unique_ptr<Impl> impl_;
++};
++
+ }  // namespace BruteForce
+ 
+ #endif  // BRUTEFORCE_SEARCH_H

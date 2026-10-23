@@ -17,15 +17,15 @@ function declaration(name) {
 const context = {
     console: { debug() {} },
     MAX_ENGINE_MOVETIME_MS: 2147483647,
-    BRAIN_LABELS: { bruteforceweb: 'Brute-force Web' },
+    BRAIN_LABELS: { bruteforce: 'Brute-force' },
     cacheInitialTimeMsForEngine: () => 1000,
-    guideCurrentBrain: () => 'pikafishweb',
+    guideCurrentBrain: () => 'pikafish',
     cloneEnginePositionState: state => state,
     buildEnginePositionState: () => ({
         stateSignature: 'state', repetitionSignature: 'rep',
         ruleSignature: 'rule', budgetSignature: 'budget'
     }),
-    guidePlanByEngine: { pikafishweb: {}, bruteforceweb: {} },
+    guidePlanByEngine: { pikafish: {}, bruteforce: {} },
     guidePlanKeyForBrain: brain => brain,
     guidePlanKey: () => 'shared',
     guidePlan: {}, guideProofPlan: {}, guideProvenFailurePlan: {}, guideProofRemember() {},
@@ -42,8 +42,8 @@ Object.assign(context, {
         horizonSafe: true, sourceBrain: 'pikafish'
     } }, bruteforce: {} },
     guidePlanKey: () => 'shared', guidePlanKeyForBrain: brain => brain,
-    guideCurrentBrain: () => 'nativecombo',
-    compositeBrains: brain => brain === 'nativecombo' ? ['pikafish', 'bruteforce'] : [brain],
+    guideCurrentBrain: () => 'combo',
+    compositeBrains: brain => brain === 'combo' ? ['pikafish', 'bruteforce'] : [brain],
     guideCurrentCacheBudgets: () => ({ red: 2, black: 2 }),
     exhaustivePlanRecallAt: () => null,
     recallAnalysisSeedMove: () => null,
@@ -68,32 +68,37 @@ assert(context.bruteForceHorizonVerdict('red', 'red', 4,
 assert(context.bruteForceHorizonVerdict('black', 'red', 4,
     { outcomeHint: 'mate', scoreType: 'mate', scoreVal: -2 }).status === 'PROVEN_FAIL',
     'defense that fails before horizon must terminate');
-assert(context.guideCacheProofStrength('PROVEN_HOLD', 'bruteforceweb', { horizonSafe: true }) >
-    context.guideCacheProofStrength('READY_DEFENSE', 'pikafishweb', { horizonSafe: true }),
+assert(context.guideCacheProofStrength('PROVEN_HOLD', 'bruteforce', { horizonSafe: true }) >
+    context.guideCacheProofStrength('READY_DEFENSE', 'pikafish', { horizonSafe: true }),
     'BF proven must outrank Pika ready');
 const state = { board: [], cs: { red: 0, black: 0 } };
 const move = { from: { row: 0, col: 0 }, to: { row: 1, col: 0 } };
 context.rememberPrefetchedGuideMove(state, 'red', move, { red: 4, black: 4 },
-    'hold', 4, true, true, 'pikafishweb', 'READY_DEFENSE');
+    'hold', 4, true, true, 'pikafish', 'READY_DEFENSE');
 context.rememberPrefetchedGuideMove(state, 'red', move, { red: 4, black: 4 },
-    'hold', 4, false, true, 'bruteforceweb', 'PROVEN_HOLD');
-assert(context.guidePlan.shared.sourceBrain === 'bruteforceweb',
+    'hold', 4, false, true, 'bruteforce', 'PROVEN_HOLD');
+assert(context.guidePlan.shared.sourceBrain === 'bruteforce',
     'Pika exact mate overwrote stronger BF proof');
 delete context.guidePlan.shared;
+// Hai lệnh remember ở trên đã ghi vào kho riêng của Pikafish; dựng lại kho chỉ có mục thành phần.
+context.guidePlanByEngine = { pikafish: { pikafish: {
+    ...cachedMove, movesLeft: 2, role: 'defense', exactMate: true,
+    horizonSafe: true, sourceBrain: 'pikafish'
+} }, bruteforce: {} };
 const componentHit = context.guidePlanRecall([], 'black');
 assert(componentHit && componentHit.sourceBrain === 'pikafish' && componentHit.move,
     'composite guide ignored a valid component cache entry');
 context.guidePlan.shared = undefined;
 context.guideProvenFailurePlan.shared = true;
 context.rememberPrefetchedGuideMove(state, 'red', move, { red: 4, black: 4 },
-    'hold', 4, true, true, 'pikafishweb', 'READY_DEFENSE');
+    'hold', 4, true, true, 'pikafish', 'READY_DEFENSE');
 assert(!context.guidePlan.shared, 'late Pika result survived BF PROVEN_FAIL tombstone');
 assert(!context.guidePlanRecall([], 'black'),
     'component cache bypassed a stronger Brute-force failure tombstone');
 assert(context.cacheBudgetsRemaining({ red: 0, black: 0 }) === 0, 'zero budget must remain zero');
 
 const early = {
-    engineType: 'bruteforceweb', id: 'early', stateSignature: 's', attempt: 1,
+    engineType: 'bruteforce', id: 'early', stateSignature: 's', attempt: 1,
     attemptStartedNo: 1, attemptDispatchedAt: 0,
     currentTimeLimitMs: 1000, initialTimeMs: 1000, attemptDeferredNo: 0
 };
@@ -101,7 +106,7 @@ assert(context.deferCacheAttempt(early, 'PARTIAL') === false, 'undispatched fail
 assert(early.attempt === 1 && early.currentTimeLimitMs === 1000, 'undispatched failure changed T');
 
 const earlyPartial = {
-    engineType: 'bruteforceweb', id: 'early-partial', stateSignature: 's', attempt: 1,
+    engineType: 'bruteforce', id: 'early-partial', stateSignature: 's', attempt: 1,
     attemptStartedNo: 1, attemptDispatchedAt: Date.now() - 100,
     currentTimeLimitMs: 1000, initialTimeMs: 1000, attemptDeferredNo: 0
 };
@@ -111,7 +116,7 @@ assert(earlyPartial.attempt === 1 && earlyPartial.currentTimeLimitMs === 1000,
     'early engine PARTIAL incorrectly advanced to 2 × T');
 
 const complete = {
-    engineType: 'bruteforceweb', id: 'complete', stateSignature: 's', attempt: 1,
+    engineType: 'bruteforce', id: 'complete', stateSignature: 's', attempt: 1,
     attemptStartedNo: 1, attemptDispatchedAt: Date.now() - 950,
     currentTimeLimitMs: 1000, initialTimeMs: 1000, attemptDeferredNo: 0
 };
@@ -121,14 +126,14 @@ context.deferCacheAttempt(complete, 'PARTIAL');
 assert(complete.attempt === 2 && complete.currentTimeLimitMs === 2000, 'duplicate defer doubled twice');
 
 const third = {
-    engineType: 'bruteforceweb', id: 'third', stateSignature: 's', attempt: 2,
+    engineType: 'bruteforce', id: 'third', stateSignature: 's', attempt: 2,
     attemptStartedNo: 2, attemptDispatchedAt: Date.now() - 1900,
     currentTimeLimitMs: 2000, initialTimeMs: 1000, attemptDeferredNo: 1
 };
 assert(context.deferCacheAttempt(third, 'PARTIAL') === true, 'second full attempt must advance');
 assert(third.attempt === 3 && third.currentTimeLimitMs === 4000,
     'third attempt must double 2T to 4T');
-for (const engineType of ['pikafish', 'pikafishweb', 'bruteforce', 'bruteforceweb']) {
+for (const engineType of ['pikafish', 'bruteforce']) {
     for (const [index, expected] of [5000, 10000, 20000, 40000].entries()) {
         assert(context.cacheAttemptTime({engineType, initialTimeMs:5000, attempt:index+1}) === expected,
             engineType + ': retry time must double each round');
@@ -138,7 +143,7 @@ for (const engineType of ['pikafish', 'pikafishweb', 'bruteforce', 'bruteforcewe
 }
 
 const newer = {
-    engineType: 'bruteforceweb', id: 'newer', stateSignature: 's', attempt: 2,
+    engineType: 'bruteforce', id: 'newer', stateSignature: 's', attempt: 2,
     attemptStartedNo: 2, attemptDispatchedAt: Date.now() - 1900,
     currentTimeLimitMs: 2000, initialTimeMs: 1000, attemptDeferredNo: 1,
     attemptInFlight: true, activeRunId: 2, status: 'RUNNING'
@@ -146,7 +151,7 @@ const newer = {
 assert(context.deferCacheAttempt(newer, 'PARTIAL', 1) === false, 'stale run was accepted');
 assert(newer.attempt === 2 && newer.status === 'RUNNING', 'stale run mutated active attempt');
 
-const retryText = context.cacheEngineRetryText('bruteforceweb', {
+const retryText = context.cacheEngineRetryText('bruteforce', {
     attempt: 2, status: 'RUNNING', currentTimeLimitMs: 2000,
     attemptDispatchedAt: Date.now() - 500, branchLabel: '#30/34 (a0a1)'
 });
@@ -155,7 +160,7 @@ assert(!retryText.includes('lần thử 2'), 'retry text still repeats the attem
 
 console.log('cache logic smoke tests: ok');
 
-for (const engineType of ['pikafish', 'pikafishweb']) {
+for (const engineType of ['pikafish']) {
     const job = { engineType, attempt: 1, attemptStartedNo: 1,
         attemptInFlight: true, activeRunId: 1, attemptDispatchedAt: Date.now(),
         currentTimeLimitMs: 600, initialTimeMs: 600 };

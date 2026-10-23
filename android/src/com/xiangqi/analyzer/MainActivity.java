@@ -285,13 +285,8 @@ public class MainActivity extends Activity {
         if (path.contains("..")) return notFound();
         String rel = path.substring(1);
         try {
-            if (rel.equals("coi-serviceworker.js")) {
-                // Service worker bat isolation cho engine Web: APK khong dung engine Web nen tra script rong.
-                return response("text/javascript", new ByteArrayInputStream(new byte[0]));
-            }
             if (rel.equals("xiangqi-analyzer.html")) {
                 String html = readAssetText(ASSET_ROOT + "/" + rel);
-                html = html.replace("<script src=\"coi-serviceworker.js\"></script>", "");
                 int head = html.indexOf("<head>");
                 String inject = "<script>" + shimJs + "</script>";
                 html = head >= 0 ? html.substring(0, head + 6) + inject + html.substring(head + 6) : inject + html;

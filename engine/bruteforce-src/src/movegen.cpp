@@ -140,7 +140,7 @@ bool isKingAttacked(const Board& b, Color color, Square king) {
 }
 
 // Bản "thu hết" của isKingAttacked ở trên — khớp collectCheckerSquares() của app từng nhánh một.
-// Giữ nguyên thứ tự quét (dọc/ngang, Mã, Tốt) rồi sắp tăng dần ở cuối, y như bản JS.
+// Giữ nguyên thứ tự quét (dọc/ngang, Mã, Tốt) rồi sắp tăng dần ở cuối, y như bản gốc.
 int collectCheckerSquares(const Board& b, Color color, Square king, int* out) {
     int kr = king.row, kc = king.col;
     Color opp = otherColor(color);

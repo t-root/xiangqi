@@ -17,7 +17,7 @@ assert.equal(context.cachePrefetchDeadlineMs('bruteforce', { state: { board: [],
     'BF defense cache must reserve one probe window per legal defense after the root proof');
 assert.equal(context.cachePrefetchDeadlineMs('pikafish', { state: { board: [], side: 'black' } }, 100), 100,
     'Pikafish already returns a move and must retain its normal watchdog window');
-for (const brain of ['pikafish', 'pikafishweb', 'bruteforce', 'bruteforceweb', 'nativecombo', 'webcombo']) {
+for (const brain of ['pikafish', 'bruteforce', 'combo']) {
     const make = (id, attempt = 1) => ({ id, engineJobs: Object.fromEntries(context.compositeBrains(brain).map(type => [type, { attempt }])) });
     const queue = [make('A'), make('B'), make('C')], retry = [], order = [];
     const take = () => {
@@ -56,7 +56,7 @@ for (const brain of ['pikafish', 'pikafishweb', 'bruteforce', 'bruteforceweb', '
 }
 
 (async () => {
-    for (const composite of ['nativecombo', 'webcombo']) {
+    for (const composite of ['combo']) {
         const [pika, bf] = context.compositeBrains(composite), calls = [];
         const job = { state: { board: [], side: 'red' }, budgets: {}, engineJobs: {
             [pika]: { attempt: 3 }, [bf]: { attempt: 1 }

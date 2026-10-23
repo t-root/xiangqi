@@ -58,7 +58,7 @@ struct StateInfo {
     int   rule60;
     int   pliesFromNull;
 
-    // House rule ported from the app's own "Engine Web": for each color, the set of its pieces
+    // House rule specific to this app: for each color, the set of its pieces
     // currently holding a check streak, with how many CONSECUTIVE own moves each of them has been
     // delivering check for. A "checker" here is a piece that genuinely attacks the enemy king
     // (st->checkersBB), NOT the piece that happened to move: a knight move that also uncovers a

@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const parser = require('../engine/node_modules/@babel/parser');
 const html = fs.readFileSync(path.join(__dirname, '../xiangqi-analyzer.html'), 'utf8');
-const context = vm.createContext({ pikafishResourceSettings: new WeakMap(), PIKAFISH_WEB_HASH_MB: 1024 });
+const context = vm.createContext({ pikafishResourceSettings: new WeakMap(), PIKAFISH_HASH_MB: 1024 });
 for (const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) {
     for (const node of parser.parse(match[1]).program.body) {
         if (node.type === 'FunctionDeclaration' && node.id.name === 'configurePikafishResources')
@@ -12,7 +12,7 @@ for (const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) {
     }
 }
 const configure = context.configurePikafishResources;
-for (const label of ['Native', 'Web']) {
+{
     const target = {}, commands = [], send = command => commands.push(command);
     configure(target, send, 2);
     assert.deepEqual(commands.splice(0), ['setoption name Threads value 2', 'setoption name Hash value 1024']);
@@ -31,5 +31,5 @@ for (const label of ['Native', 'Web']) {
     assert.throws(() => configure(failed, () => { throw Error('transport failed'); }, 2));
     configure(failed, send, 2);
     assert.equal(commands.length, 2, 'Failed dispatch must not mark settings as applied');
-    console.log('PASS ' + label + ': retain resources, changes, restart, reconnect, failed dispatch');
+    console.log('PASS Pikafish: retain resources, changes, restart, reconnect, failed dispatch');
 }

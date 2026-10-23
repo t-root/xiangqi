@@ -14,7 +14,9 @@ suite.push('bruteforce-proof-line.cjs');
 suite.push('history-regression.cjs');
 suite.push('analysis-engine-lines.cjs');
 suite.push('analysis-progress-visibility.cjs');
-suite.push('web-native-display-parity.cjs');
+suite.push('bf-hash-sessions.cjs');
+suite.push('bf-node-count.cjs');
+suite.push('trial-verdict.cjs');
 suite.push('https-dual-port.cjs');
 for(const file of suite){
     console.log('\n>>> '+file);

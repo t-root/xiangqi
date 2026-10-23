@@ -174,7 +174,7 @@ final class WsBridge {
                     .put("mime", mime)
                     .put("data", Base64.encodeToString(data, Base64.NO_WRAP))
                     .toString();
-            String script = "window.handleNativeClipboardImage && window.handleNativeClipboardImage("
+            String script = "window.handleClipboardImage && window.handleClipboardImage("
                     + JSONObject.quote(result) + ")";
             webView.post(() -> webView.evaluateJavascript(script, null));
         } catch (JSONException e) {
@@ -185,7 +185,7 @@ final class WsBridge {
     void reportClipboardImageError(String message) {
         try {
             String result = new JSONObject().put("error", message).toString();
-            String script = "window.handleNativeClipboardImage && window.handleNativeClipboardImage("
+            String script = "window.handleClipboardImage && window.handleClipboardImage("
                     + JSONObject.quote(result) + ")";
             webView.post(() -> webView.evaluateJavascript(script, null));
         } catch (JSONException e) {

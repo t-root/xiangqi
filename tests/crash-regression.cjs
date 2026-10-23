@@ -217,29 +217,29 @@ function bridgeFixture() {
     first.emit('close');
     assert(c1.killed,'đóng kết nối phải dừng engine riêng của nó');assert(!c2.killed,'engine của kết nối còn lại phải sống');
   });
-  await test('native clients report a lost session and schedule reconnect', () => {
+  await test('clients report a lost session and schedule reconnect', () => {
     const html=fs.readFileSync(path.join(__dirname,'../xiangqi-analyzer.html'),'utf8');
     for (const [engine, schedule] of [['Pikafish','schedulePikafishReconnect'],['Brute-force','scheduleBruteForceReconnect']]) {
       assert.match(html,new RegExp(`function ${schedule}\\(\\)`));
       assert.match(html,new RegExp(`Mất phiên ${engine}[^']*`));
       assert.match(html,new RegExp(`${schedule}\\(\\);`));
     }
-    assert.match(html,/function scheduleNativeAnalysisRestart\(engine, boardSnapshot, resultEl\)/);
-    assert.match(html,/function stopNativeAnalysisSearchForRestart\(engine\)/);
-    assert.match(html,/stopNativeAnalysisSearchForRestart\(engine\)/);
-    assert.match(html,/composite === 'nativecombo'.*scheduleNativeAnalysisRestart/s);
+    assert.match(html,/function scheduleAnalysisRestart\(engine, boardSnapshot, resultEl\)/);
+    assert.match(html,/function stopAnalysisSearchForRestart\(engine\)/);
+    assert.match(html,/stopAnalysisSearchForRestart\(engine\)/);
+    assert.match(html,/composite === 'combo'.*scheduleAnalysisRestart/s);
   });
-  await test('native composite reconnect restarts both engines from the original board', async () => {
+  await test('composite reconnect restarts both engines from the original board', async () => {
     const html=fs.readFileSync(path.join(__dirname,'../xiangqi-analyzer.html'),'utf8');
     const script=[...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].map(m=>m[1]).join('\n');
-    const wanted=new Set(['stopNativeAnalysisSearchForRestart','scheduleNativeAnalysisRestart']);
+    const wanted=new Set(['stopAnalysisSearchForRestart','scheduleAnalysisRestart']);
     const functions=parser.parse(script).program.body.filter(n=>n.type==='FunctionDeclaration'&&wanted.has(n.id.name))
       .map(n=>script.slice(n.start,n.end)).join('\n');
     const calls=[],resultEl={innerHTML:''};
     const context=vm.createContext({
-      analysisRunning:true,analysisCancelled:false,compositeAnalysisStatus:{},nativeAnalysisRestartGeneration:0,
-      nativeAnalysisRestartPending:false,NATIVE_RECONNECT_DELAY_MS:0,board:[['original']],
-      BRAIN_LABELS:{nativecombo:'Phối hợp Native'},compositeBrains:engine=>engine==='nativecombo'?['pikafish','bruteforce']:[engine],
+      analysisRunning:true,analysisCancelled:false,compositeAnalysisStatus:{},analysisRestartGeneration:0,
+      analysisRestartPending:false,RECONNECT_DELAY_MS:0,board:[['original']],
+      BRAIN_LABELS:{combo:'Phối hợp'},compositeBrains:engine=>engine==='combo'?['pikafish','bruteforce']:[engine],
       WebSocket:{OPEN:1},pikafishWs:{readyState:1,send:cmd=>calls.push('pika-stop:'+cmd)},bfWs:{readyState:1,send:cmd=>calls.push('bf-stop:'+cmd)},
       pikafishActiveWs:null,bfActiveWs:null,
       stopAnalysisTimersOnly:()=>calls.push('timers'),
@@ -247,8 +247,8 @@ function bridgeFixture() {
       ensureBruteForceSocket:async()=>calls.push('bf'),startAnalysis:()=>calls.push('restart'),
       setTimeout:(fn)=>{fn();return 0;},console
     });
-    vm.runInContext('var nativeAnalysisRestartGeneration=0,nativeAnalysisRestartPending=false;\n'+functions,context);
-    assert.equal(context.scheduleNativeAnalysisRestart('nativecombo',[['original']],resultEl),true);
+    vm.runInContext('var analysisRestartGeneration=0,analysisRestartPending=false;\n'+functions,context);
+    assert.equal(context.scheduleAnalysisRestart('combo',[['original']],resultEl),true);
     await new Promise(resolve=>setImmediate(resolve));
     assert.deepEqual(calls,['timers','pika-stop:stop','bf-stop:stop','buttons:false','pika','bf','restart']);
     assert.match(resultEl.innerHTML,/chạy lại phân tích từ đầu/);
@@ -267,7 +267,7 @@ function bridgeFixture() {
     new vm.Script(fs.readFileSync(path.join(engineDir,'server.js'),'utf8'));
   });
   const pika=path.join(engineDir,'pikafish/pikafish-bmi2.exe');
-  await test('Pikafish native handshake, search, stop, EOF', async () => {
+  await test('Pikafish handshake, search, stop, EOF', async () => {
     const p=launch(pika);p.send('uci');await p.wait(s=>s==='uciok');
     p.send('setoption name Threads value 1\nisready');await p.wait(s=>s==='readyok',8000);
     p.send('position startpos\ngo movetime 50');await p.wait(s=>s.startsWith('bestmove'),8000);

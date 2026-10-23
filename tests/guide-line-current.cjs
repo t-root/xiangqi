@@ -9,7 +9,7 @@ const source = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)]
         .map(node => match[1].slice(node.start, node.end)))[0];
 
 const original = [{ board: 'A' }, { board: 'B' }, { board: 'C' }];
-for (const engine of ['pikafish', 'pikafishweb', 'bruteforce', 'bruteforceweb']) {
+for (const engine of ['pikafish', 'bruteforce']) {
     const c = vm.createContext({ guideActive: true, guideLineEngine: engine, board: 'off-line', lineViewSteps: original });
     vm.runInContext(source, c);
     c.syncGuideLineToCurrentPosition();

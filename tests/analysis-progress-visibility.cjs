@@ -26,7 +26,7 @@ const engineLines = { style: { display: 'block' } };
 const c = vm.createContext({
     analysisCancelled: false,
     analysisRunning: true,
-    BRAIN_LABELS: { bruteforceweb: 'Brute-force Web', pikafishweb: 'Pikafish Web' },
+    BRAIN_LABELS: { bruteforce: 'Brute-force', pikafish: 'Pikafish' },
     fmtElapsed: ms => `${ms / 1000} giây`,
     document: { getElementById: id => id === 'analysisEngineLines' ? engineLines : { style: {} } },
     renderCompositeAnalysisProgress: () => true
@@ -45,11 +45,11 @@ assert.match(telemetryHtml, /bảng hash 0\.0%/);
 assert.match(telemetryHtml, /RAM 1\/10\.5 GiB/);
 
 const elapsedHtml = c.buildAnalysisElapsedHtml('6.2 giây', [
-    { engine: 'pikafishweb', elapsedMs: 6200 },
-    { engine: 'bruteforceweb', elapsedMs: 8000, telemetry }
+    { engine: 'pikafish', elapsedMs: 6200 },
+    { engine: 'bruteforce', elapsedMs: 8000, telemetry }
 ]);
 assert.ok(
-    elapsedHtml.indexOf('Pikafish Web:</strong> 6.2 giây') <
+    elapsedHtml.indexOf('Pikafish:</strong> 6.2 giây') <
     elapsedHtml.indexOf('(Tổng 6.2 giây)') &&
     elapsedHtml.indexOf('(Tổng 6.2 giây)') < elapsedHtml.indexOf('259.379 nút'),
     'Total elapsed time must appear after engine timings and before Brute-force telemetry'
