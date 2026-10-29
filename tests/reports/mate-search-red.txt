@@ -1,0 +1,21 @@
+id name Brute-force
+id author cong dong du an Xiangqi Analyzer
+option name Threads type spin default 1 min 1 max 32
+option name CheckStreak_RestrictedColor type string default none
+option name CheckStreak_Limit type spin default 2 min 1 max 20
+option name CheckStreak_BonusRule type check default false
+option name CheckStreak_RootRed type string default none
+option name CheckStreak_RootBlack type string default none
+option name KtcBudget type check default false
+bruteforceok
+readyok
+info depth 1 score cp 0 nodes 82 time 11
+info depth 2 score cp 0 nodes 1759 time 16
+info depth 3 score cp 0 nodes 29263 time 43
+info depth 4 score cp 0 nodes 309166 time 239
+info depth 5 score cp 0 nodes 1686904 time 1001
+info depth 6 score cp 0 nodes 9143564 time 5126
+info depth 7 score cp 0 nodes 98128422 time 49005
+info depth 8 score cp 0 nodes 906875588 time 393436
+info string outcome partial
+bestmove (none)
