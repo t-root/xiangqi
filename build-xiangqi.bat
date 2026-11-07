@@ -174,6 +174,9 @@ call :cleandist
 if errorlevel 1 exit /b 1
 if not exist "%DIST_DIR%" mkdir "%DIST_DIR%"
 
+call :sync_lite_rules
+if errorlevel 1 exit /b 1
+
 echo Dang dong goi XiangqiAnalyzer.exe (mat vai phut)...
 cd /d "%ENGINE_DIR%"
 call npm run build
@@ -210,6 +213,28 @@ echo ERROR: khong chep duoc %~4 sang %2.
 echo Dong cua so "node server.js" (va tab dang choi) roi chay lai file nay.
 pause
 exit /b 1
+
+:sync_lite_rules
+REM Luat nhan dang dung chung (rules.js) chi sua o tiktok_auto_reply_extension\; chep sang ban Android Lite
+REM de hai ban luon dong bo (Lite la ban viet rieng, khong do build tao ra nen khong bi don khi cleandist).
+set "LITE_DIR=%DIST_DIR%\android\tiktok_auto_reply_android_extension"
+if not exist "%ROOT%tiktok_auto_reply_extension\rules.js" (
+    echo ERROR: thieu %ROOT%tiktok_auto_reply_extension\rules.js
+    pause
+    exit /b 1
+)
+if not exist "%LITE_DIR%" (
+    echo CANH BAO: khong thay %LITE_DIR% - bo qua dong bo rules.js cho ban Android Lite.
+    exit /b 0
+)
+copy /Y "%ROOT%tiktok_auto_reply_extension\rules.js" "%LITE_DIR%\rules.js" >nul
+if errorlevel 1 (
+    echo ERROR: khong chep duoc rules.js sang %LITE_DIR%.
+    pause
+    exit /b 1
+)
+echo Da dong bo rules.js sang ban Android Lite.
+exit /b 0
 
 :cleandist
 if not exist "%DIST_DIR%" exit /b 0
@@ -471,6 +496,11 @@ if (Test-Path -LiteralPath $distDir) {
     }
 }
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
+# Dong bo luat nhan dang dung chung sang ban Android Lite (nguon: tiktok_auto_reply_extension\rules.js).
+$rulesSrc = Join-Path $ProjectRoot 'tiktok_auto_reply_extension\rules.js'
+$liteDir = Join-Path $distDir 'android\tiktok_auto_reply_android_extension'
+if (-not (Test-Path -LiteralPath $rulesSrc)) { throw "Thieu $rulesSrc" }
+if (Test-Path -LiteralPath $liteDir) { Copy-Item -LiteralPath $rulesSrc -Destination (Join-Path $liteDir 'rules.js') -Force; Write-Host 'Da dong bo rules.js sang ban Android Lite.' } else { Write-Host "CANH BAO: khong thay $liteDir - bo qua dong bo rules.js." }
 Write-Host 'Dang dong goi XiangqiAnalyzer.exe...'
 Push-Location $engineDir
 try {
