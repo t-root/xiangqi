@@ -113,6 +113,10 @@ extern u64  root[COLOR_NB];
 // check for the rest of the streak (see the bonus-detection block in Position::do_move). Off by
 // default, set through "CheckStreak_BonusRule" — mirrors checkStreakBonusRuleOn in the app.
 extern bool bonusRuleOn;
+// Optional extension (off by default, "CheckStreak_FreeCapture"): a piece already holding a streak
+// that captures the piece interposed on its own check line and still checks keeps its counter
+// unchanged (the capture is free). Takes priority over bonusRuleOn. Mirrors checkStreakFreeCaptureRuleOn.
+extern bool freeCaptureRuleOn;
 
 struct Digit {
     int  sq, n;

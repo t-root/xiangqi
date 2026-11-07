@@ -65,6 +65,7 @@ struct MateSearchState {
     CsSide restrictedSide = CsSide::None;   // khớp checkStreakRestrictedColor
     int checkStreakLimit = CHECK_STREAK_DEFAULT;
     bool checkStreakBonusRuleOn = false;    // khớp checkStreakBonusRuleOn — luật "cản rồi bị ăn mà vẫn chiếu"
+    bool checkStreakFreeCaptureRuleOn = false;  // khớp checkStreakFreeCaptureRuleOn — luật "ăn-cản không tính"
     bool ktcBudgetOn = false;
     Color ktcExemptColor = Color::None;
 

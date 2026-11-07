@@ -77,6 +77,8 @@ int g_checkStreakLimit = CHECK_STREAK_DEFAULT;
 // định, app báo qua option CheckStreak_BonusRule trước mỗi lượt "go" giống hệt cách báo
 // CheckStreak_RestrictedColor/Limit.
 bool g_checkStreakBonusRuleOn = false;
+// Luật "ăn-cản không tính" — khớp checkStreakFreeCaptureRuleOn của app, option CheckStreak_FreeCapture.
+bool g_checkStreakFreeCaptureRuleOn = false;
 // Số luồng tìm kiếm mate; mỗi luồng dùng một state riêng và có tối đa ba worker phụ.
 int g_threads = 1;
 int g_hashReserveMiB = 0;
@@ -341,6 +343,7 @@ struct SearchSession {
     CsSide restrictedSide = CsSide::None;
     int checkStreakLimit = CHECK_STREAK_DEFAULT;
     bool checkStreakBonusRuleOn = false;
+    bool checkStreakFreeCaptureRuleOn = false;
     CsCode csRootRed = 0, csRootBlack = 0;
     bool ktcBudgetOn = false;
     MateSearchState state;
@@ -378,6 +381,7 @@ void ensureWorkerPool(std::vector<MateSearchState>& workers, const MateSearchSta
         w.restrictedSide = templ.restrictedSide;
         w.checkStreakLimit = templ.checkStreakLimit;
         w.checkStreakBonusRuleOn = templ.checkStreakBonusRuleOn;
+        w.checkStreakFreeCaptureRuleOn = templ.checkStreakFreeCaptureRuleOn;
         w.ktcBudgetOn = templ.ktcBudgetOn;
     }
 }
@@ -416,6 +420,7 @@ void captureSession(SearchSession& session) {
     session.restrictedSide = g_restrictedSide;
     session.checkStreakLimit = g_checkStreakLimit;
     session.checkStreakBonusRuleOn = g_checkStreakBonusRuleOn;
+    session.checkStreakFreeCaptureRuleOn = g_checkStreakFreeCaptureRuleOn;
     session.csRootRed = g_csRootRed;
     session.csRootBlack = g_csRootBlack;
     session.ktcBudgetOn = g_ktcBudgetOn;
@@ -429,6 +434,7 @@ void restoreSession(const SearchSession& session) {
     g_restrictedSide = session.restrictedSide;
     g_checkStreakLimit = session.checkStreakLimit;
     g_checkStreakBonusRuleOn = session.checkStreakBonusRuleOn;
+    g_checkStreakFreeCaptureRuleOn = session.checkStreakFreeCaptureRuleOn;
     g_csRootRed = session.csRootRed;
     g_csRootBlack = session.csRootBlack;
     g_ktcBudgetOn = session.ktcBudgetOn;
@@ -660,6 +666,7 @@ void runGoBudget(int maxBudget, long long movetimeMs, int fromBudget, SearchSess
     st.restrictedSide = g_restrictedSide;
     st.checkStreakLimit = g_checkStreakLimit;
     st.checkStreakBonusRuleOn = g_checkStreakBonusRuleOn;
+    st.checkStreakFreeCaptureRuleOn = g_checkStreakFreeCaptureRuleOn;
     st.ktcBudgetOn = g_ktcBudgetOn;
     st.cancelled = &g_cancelled;
     std::vector<MateSearchState>& workers = session ? session->workers : defaultMateSearchWorkers();
@@ -782,6 +789,7 @@ void runGoBudgetPair(int redBudget, int blackBudget, long long movetimeMs, Searc
     st.restrictedSide = g_restrictedSide;
     st.checkStreakLimit = g_checkStreakLimit;
     st.checkStreakBonusRuleOn = g_checkStreakBonusRuleOn;
+    st.checkStreakFreeCaptureRuleOn = g_checkStreakFreeCaptureRuleOn;
     st.ktcBudgetOn = g_ktcBudgetOn;
     st.cancelled = &g_cancelled;
     std::vector<MateSearchState>& workers = session ? session->workers : defaultMateSearchWorkers();
@@ -863,6 +871,7 @@ void runGoDrawLine(int redBudget, int blackBudget) {
     st.restrictedSide = g_restrictedSide;
     st.checkStreakLimit = g_checkStreakLimit;
     st.checkStreakBonusRuleOn = g_checkStreakBonusRuleOn;
+    st.checkStreakFreeCaptureRuleOn = g_checkStreakFreeCaptureRuleOn;
     st.ktcBudgetOn = g_ktcBudgetOn;
     st.cancelled = &g_cancelled;
     st.deadline = std::chrono::steady_clock::time_point::max();
@@ -1053,6 +1062,8 @@ void handleSetOption(std::istringstream& iss) {
     } else if (name == "CheckStreak_BonusRule") {
         // Luật mở rộng tuỳ chọn "cản rồi bị ăn mà vẫn chiếu" — khớp checkStreakBonusRuleOn của app.
         g_checkStreakBonusRuleOn = (value == "true" || value == "1" || value == "on");
+    } else if (name == "CheckStreak_FreeCapture") {
+        g_checkStreakFreeCaptureRuleOn = (value == "true" || value == "1" || value == "on");
     } else if (name == "CheckStreak_RootRed") {
         g_csRootRed = parseCheckStreakRootOption(value);
     } else if (name == "CheckStreak_RootBlack") {
@@ -1130,6 +1141,7 @@ bool executeCommandLine(const std::string& line) {
             sendLine("option name CheckStreak_RestrictedColor type string default none");
             sendLine("option name CheckStreak_Limit type spin default 2 min 1 max 20");
             sendLine("option name CheckStreak_BonusRule type check default false");
+            sendLine("option name CheckStreak_FreeCapture type check default false");
             sendLine("option name CheckStreak_RootRed type string default none");
             sendLine("option name CheckStreak_RootBlack type string default none");
             sendLine("option name KtcBudget type check default false");

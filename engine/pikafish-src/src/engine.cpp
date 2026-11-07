@@ -231,6 +231,14 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
           return std::nullopt;
       }));
 
+    // Optional extension (off by default): capturing the interposer while still checking does not
+    // count towards the limit — mirrors checkStreakFreeCaptureRuleOn in the app.
+    options.add(  //
+      "CheckStreak_FreeCapture", Option(false, [](const Option& o) {
+          CheckStreak::freeCaptureRuleOn = bool(o);
+          return std::nullopt;
+      }));
+
     // Root check-streak already in progress mid-game (see CheckStreak::root in position.h) — a
     // comma separated list of "square:count" in plain UCI text ("e4:2,c7:1"), "none" clears it.
     // Applied to the position in Engine::set_position, right after Position::set() resets it to 0.

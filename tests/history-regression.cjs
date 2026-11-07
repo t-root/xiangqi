@@ -4,7 +4,7 @@ const parser = require('../engine/node_modules/@babel/parser');
 const html = fs.readFileSync(path.join(__dirname, '../xiangqi-analyzer.html'), 'utf8');
 const functions = new Map(), declarations = [];
 // Biến luật dùng chung mà các hàm đọc trực tiếp; các biến trạng thái khác do test tự gán vào context.
-const SHARED_LETS = new Set(['checkStreakLimit', 'checkStreakRestrictedColor', 'checkStreakBonusRuleOn', 'analysisRootStreak', 'ktcBudgetOn', 'ktcExemptColor']);
+const SHARED_LETS = new Set(['checkStreakLimit', 'checkStreakRestrictedColor', 'checkStreakBonusRuleOn', 'checkStreakFreeCaptureRuleOn', 'analysisRootStreak', 'ktcBudgetOn', 'ktcExemptColor']);
 for (const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) {
   for (const node of parser.parse(match[1]).program.body) {
     if (node.type === 'FunctionDeclaration') functions.set(node.id.name, match[1].slice(node.start, node.end));

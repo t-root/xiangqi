@@ -64,7 +64,8 @@ inline bool squareBetweenOnLine(int fromSq, int midSq, int kingSq) {
 // không cộng dồn).
 inline CsCode csAdvanceAfterMove(const Board& b, CsCode code, const Move& move, Color color,
                                  Square oppKing, CsSide restrictedSide, int limit,
-                                 bool bonusRuleOn = false, bool isCapture = false) {
+                                 bool bonusRuleOn = false, bool isCapture = false,
+                                 bool freeCaptureRuleOn = false) {
     if (!csRestricted(restrictedSide, color)) return 0;
     Color opp = otherColor(color);
     if (!isKingAttacked(b, opp, oppKing)) return 0;
@@ -83,7 +84,13 @@ inline CsCode csAdvanceAfterMove(const Board& b, CsCode code, const Move& move, 
         int prevN = csCountAt(code, identSq);
         int n = prevN + 1;
         bool bonus = csBonusAt(code, identSq);
-        if (!bonus && bonusRuleOn && sq == toSq && prevN == 1 && isCapture
+        // Luật TUỲ CHỌN "ăn-cản không tính" (khớp checkStreakFreeCaptureRuleOn của app): quân đang giữ
+        // chuỗi ăn đúng quân cản trên đường chiếu của chính nó mà vẫn chiếu thì giữ nguyên bộ đếm.
+        // Ưu tiên hơn luật bonus.
+        if (freeCaptureRuleOn && sq == toSq && prevN >= 1 && isCapture
+            && squareBetweenOnLine(fromSq, toSq, kingSq)) {
+            n = prevN;
+        } else if (!bonus && bonusRuleOn && sq == toSq && prevN == 1 && isCapture
             && squareBetweenOnLine(fromSq, toSq, kingSq)) {
             bonus = true;
         }
@@ -113,12 +120,14 @@ bool hasAnyLegalMove(const Board& b, Color color);
 inline CheckStreakResult nextCheckStreakAfterMove(const Board& b, Color mover, const Move& move,
                                                     CsCode csRed, CsCode csBlack, int ply,
                                                     CsSide restrictedSide, int limit,
-                                                    bool bonusRuleOn = false, bool isCapture = false) {
+                                                    bool bonusRuleOn = false, bool isCapture = false,
+                                                    bool freeCaptureRuleOn = false) {
     Color opp = otherColor(mover);
     Square oppKing;
     CsCode myOld = mover == Color::Red ? csRed : csBlack;
     CsCode ncs = findKing(b, opp, oppKing)
-        ? csAdvanceAfterMove(b, myOld, move, mover, oppKing, restrictedSide, limit, bonusRuleOn, isCapture) : 0;
+        ? csAdvanceAfterMove(b, myOld, move, mover, oppKing, restrictedSide, limit, bonusRuleOn, isCapture,
+                                      freeCaptureRuleOn) : 0;
     if (ncs < 0) {
         // Chiếu quá số lần luôn thua — kể cả khi nước ấy đồng thời chiếu bí (thế cờ 50).
         i32 score = -(MATE_SCORE - (ply + 1));

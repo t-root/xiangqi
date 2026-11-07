@@ -57,7 +57,7 @@ async function test(name,fn){await fn();checks++;console.log('PASS '+name);}
   const calls=[];
   const c=load({guideActive:true,document:{getElementById:()=>({})},guideToken:0,guideSide:'black',currentPlayer:'black',
    gameOver:false,guideAttacker:'red',guideMovesTarget:6,guideMaxMoves:6,board:[],BRAIN_IDS:Object.keys(labels),
-   syncCheckStreakRestrictedForGame(){},fullCacheConstrained:()=>false,
+   syncCheckStreakRestrictedForGame(){},syncMovesLimitToPromise(){},fullCacheConstrained:()=>false,
    guideMovesRemaining:()=>6,recallAnalysisSeedMove:()=>null,currentCompletedGuideAnswer:()=>null,
    stopBackgroundCacheForLive(){},pendingGuideEngineJob:()=>null,
    refreshPlayGuideMoveComposite:brain=>calls.push(brain)},['refreshGuide']);
@@ -70,7 +70,7 @@ async function test(name,fn){await fn();checks++;console.log('PASS '+name);}
   const calls=[];
   const c=load({guideActive:true,document:{getElementById:()=>({})},guideToken:0,guideSide:'red',currentPlayer:'red',
    gameOver:false,guideAttacker:null,guideMovesTarget:0,guideMaxMoves:0,guideMode:'win',guideEngine:'bruteforce',
-   board:[],liveCheckStreak:{red:0,black:0},BRAIN_IDS:['bruteforce'],syncCheckStreakRestrictedForGame(){},
+   board:[],liveCheckStreak:{red:0,black:0},BRAIN_IDS:['bruteforce'],syncCheckStreakRestrictedForGame(){},syncMovesLimitToPromise(){},
    fullCacheConstrained:()=>true,fullCacheMovesAt:()=>[{}],guideMovesRemaining:()=>0,
    recallAnalysisSeedMove:()=>null,currentCompletedGuideAnswer:()=>null,
    stopBackgroundCacheForLive:brain=>calls.push(`stop:${brain}`),pendingGuideEngineJob:()=>null,

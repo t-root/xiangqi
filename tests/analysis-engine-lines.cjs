@@ -13,7 +13,7 @@ for (const combo of ['combo']) {
     guideCompositeLineChosen:true,
     guideToken:0,guideOfferLocked:false,BRAIN_IDS:[combo,...brains],
     document:{getElementById:()=>({})},renderAnalysisEngineLines(){},houseRuleLossReason:()=>null,
-    syncCheckStreakRestrictedForGame(){},prioritizeFullCacheCurrentBranch(){},fullCacheConstrained:()=>false,
+    syncCheckStreakRestrictedForGame(){},syncMovesLimitToPromise(){},prioritizeFullCacheCurrentBranch(){},fullCacheConstrained:()=>false,
     showWinGuideMove(m){c.answer=m;},showDefenseGuideMove(m){c.answer=m;},
     refreshPlayGuideMoveComposite(){c.queries=(c.queries||0)+1;}});
   c.rememberCompositeAnalysisLines({engineReports:brains.map((engine,i)=>({engine,

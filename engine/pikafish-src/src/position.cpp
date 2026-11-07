@@ -65,6 +65,7 @@ int  limit                = 2;
 u64 root[COLOR_NB] = {0, 0};
 // Off by default — set through "CheckStreak_BonusRule" (see engine.cpp).
 bool bonusRuleOn = false;
+bool freeCaptureRuleOn = false;
 
 // `mid` lies strictly between `from` and `king`, all three on the same file or the same rank —
 // used to recognise "captured the piece that had just interposed on this exact check line".
@@ -756,8 +757,11 @@ void Position::do_move(Move                      m,
             // piece, and that piece was sitting between this piece's old square and the enemy king
             // — i.e. it had just interposed on this piece's own (first) check line. Mirrors the
             // bonus-detection block in csAdvanceAfterMove() (app) / rules.h (bruteforce-src).
-            if (!bonus && CheckStreak::bonusRuleOn && s == to && prevN == 1 && captured
+            if (CheckStreak::freeCaptureRuleOn && s == to && prevN >= 1 && captured
                 && CheckStreak::square_between_on_line(from, to, king_square(them)))
+                n = prevN;  // free capture of the interposer: counter stays as it was
+            else if (!bonus && CheckStreak::bonusRuleOn && s == to && prevN == 1 && captured
+                     && CheckStreak::square_between_on_line(from, to, king_square(them)))
                 bonus = true;
             // A count only ever has to survive up to limit + 1 (+1 more with the bonus; rule_judge
             // ends the game at that point), so this clamp is unreachable with the limits the app
