@@ -1399,6 +1399,14 @@ bool Position::rule_judge(Value& result, int ply) {
                     // Chasing detection
                     result = rollback.detect_chases(i, ply);
                 }
+                else if (CheckStreak::restricted[WHITE] != CheckStreak::restricted[BLACK])
+                    // The app's "Phân Tích" (analysis) rule — exactly one side is restricted. It
+                    // limits how many times in a row ONE piece of that side may check and does not
+                    // use the stock "perpetual check loses" adjudication. A repeated position
+                    // reached through checks (e.g. Black alternating a Knight discovered check with a
+                    // Soldier check) is therefore not a win for the other side; it is a repetition,
+                    // scored as a draw. The two-sided "Duyệt & Điều Khiển" rule keeps stock behaviour.
+                    result = VALUE_DRAW;
                 else
                     // Checking detection
                     result = !checkUs ? mate_in(ply) : !checkThem ? mated_in(ply) : VALUE_DRAW;
