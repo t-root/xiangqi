@@ -407,6 +407,13 @@ void resetNodeCounters(MateSearchState& st, std::vector<MateSearchState>& worker
     for (auto& w : workers) { w.nodeCounter = 0; w.progressReportedNodes = 0; }
 }
 
+// Chốt phần nút chưa báo của mọi luồng rồi trả về tổng nút đã quét.
+i64 flushedTotalNodes(MateSearchState& st, std::vector<MateSearchState>& workers) {
+    st.progressReportedNodes = st.nodeCounter;
+    for (auto& w : workers) w.progressReportedNodes = w.nodeCounter;
+    return totalNodes(st, workers);
+}
+
 size_t totalHashUsed(const MateSearchState& st, const std::vector<MateSearchState>& workers) {
     size_t used = st.tt.used();
     for (const auto& w : workers) used += w.tt.used();
@@ -677,7 +684,9 @@ void runGoBudget(int maxBudget, long long movetimeMs, int fromBudget, SearchSess
         ? t0 + std::chrono::milliseconds(movetimeMs)
         : std::chrono::steady_clock::time_point::max();
     st.deadline = deadline;  // cấp hash là khởi tạo tài nguyên, không tính vào thời lượng tìm kiếm.
-    g_progressNodes.store(0, std::memory_order_relaxed);
+    // Phiên ấm gia hạn thời gian: bộ đếm nút của các luồng được giữ nguyên qua các lát, nên tiến độ phải
+    // cộng dồn từ tổng đã quét thay vì về 0 (nếu không UI chỉ thấy nút của lát hiện tại).
+    g_progressNodes.store(session ? flushedTotalNodes(st, workers) : 0, std::memory_order_relaxed);
     std::atomic<int> progressLevel{std::max(1, fromBudget)};
     SearchProgressReporter progressReporter(st, workers, defaultMateSearchHashPool(), progressLevel, t0);
 
@@ -805,7 +814,9 @@ void runGoBudgetPair(int redBudget, int blackBudget, long long movetimeMs, Searc
         ? t0 + std::chrono::milliseconds(movetimeMs)
         : std::chrono::steady_clock::time_point::max();
     st.deadline = deadline;
-    g_progressNodes.store(0, std::memory_order_relaxed);
+    // Phiên ấm gia hạn thời gian: bộ đếm nút của các luồng được giữ nguyên qua các lát, nên tiến độ phải
+    // cộng dồn từ tổng đã quét thay vì về 0 (nếu không UI chỉ thấy nút của lát hiện tại).
+    g_progressNodes.store(session ? flushedTotalNodes(st, workers) : 0, std::memory_order_relaxed);
     std::atomic<int> progressLevel{std::max(redBudget, blackBudget)};
     SearchProgressReporter progressReporter(st, workers, defaultMateSearchHashPool(), progressLevel, t0);
 
