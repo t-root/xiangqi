@@ -9,7 +9,9 @@ const assert = require('assert');
 
 const ROOT = path.resolve(__dirname, '..');
 const PIKA = process.env.PIKA_EXE || path.join(ROOT, 'engine', 'pikafish', 'pikafish-bmi2.exe');
-const DEPTH = 20;
+// Pikafish 2026-09-06 (có seekMate, cắt tỉa tìm mate mới) chốt đáp án ngắn nhất ở chế độ ktc muộn hơn
+// bản cũ: bài "tướng chạy giữa đường" ra mate 3 ở độ sâu 27 thay vì 15, nên đặt 34 để có dư.
+const DEPTH = 34;
 
 class Uci {
   constructor() {
