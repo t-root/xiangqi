@@ -180,7 +180,24 @@ inline bool overflow(u64 code, int limit) {
     }
     return false;
 }
-}
+
+
+// True if ANY checking piece packed in `code` has already checked as many times in a row as it is
+// allowed: one more consecutive check by it would overflow (and lose by the house rule).
+inline bool at_limit(u64 code, int limit) {
+    while (code)
+    {
+        u64 digit = code % DIGIT_BASE;
+        code /= DIGIT_BASE;
+        if (digit)
+        {
+            Digit d = decode_digit(digit);
+            if (d.n >= limit + (d.bonus ? 1 : 0))
+                return true;
+        }
+    }
+    return false;
+}}
 
 
 // A list to keep track of the position states along the setup moves (from the

@@ -1400,15 +1400,27 @@ bool Position::rule_judge(Value& result, int ply) {
                     memcpy((void*) &rollback, (const void*) this, offsetof(Position, filter));
 
                     // Chasing detection
-                    result = rollback.detect_chases(i, ply);
+                    // The app's "Phân Tích" rule (exactly one side restricted) has no perpetual-chase
+                    // adjudication either: a repetition without checks is a plain draw there.
+                    result = CheckStreak::restricted[WHITE] != CheckStreak::restricted[BLACK]
+                             ? VALUE_DRAW
+                             : rollback.detect_chases(i, ply);
                 }
+                else if (CheckStreak::restricted[WHITE] != CheckStreak::restricted[BLACK]
+                         && CheckStreak::at_limit(
+                           st->checkStreak[CheckStreak::restricted[WHITE] ? WHITE : BLACK],
+                           CheckStreak::limit))
+                    // The app's "Phân Tích" rule (exactly one side restricted): a restricted piece
+                    // has already used its last allowed check, so this repetition cannot go on
+                    // legally — the next check overflows and loses by the house rule, one move
+                    // later than the stock "perpetual check loses" verdict would. Give no verdict
+                    // here and let the search reach that overflow.
+                    break;
                 else if (CheckStreak::restricted[WHITE] != CheckStreak::restricted[BLACK])
-                    // The app's "Phân Tích" (analysis) rule — exactly one side is restricted. It
-                    // limits how many times in a row ONE piece of that side may check and does not
-                    // use the stock "perpetual check loses" adjudication. A repeated position
-                    // reached through checks (e.g. Black alternating a Knight discovered check with a
-                    // Soldier check) is therefore not a win for the other side; it is a repetition,
-                    // scored as a draw. The two-sided "Duyệt & Điều Khiển" rule keeps stock behaviour.
+                    // The same rule, restricted piece still within its limit: the app does not use
+                    // the stock "perpetual check loses" adjudication, so a repetition reached
+                    // through checks (e.g. Black alternating a Knight discovered check with a
+                    // Soldier check) is a plain repetition, scored as a draw.
                     result = VALUE_DRAW;
                 else
                     // Checking detection
